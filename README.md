@@ -1,5 +1,6 @@
 # Intelligent Markdown for Lua
 
+[![CI](https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml/badge.svg)](https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml)
 [![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/liubai01.intelligent-markdown?style=flat-square&label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
 [![Visual Studio Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/liubai01.intelligent-markdown?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
 [![Visual Studio Marketplace Rating](https://img.shields.io/visual-studio-marketplace/r/liubai01.intelligent-markdown?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
