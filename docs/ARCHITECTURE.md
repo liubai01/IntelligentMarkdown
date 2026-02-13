@@ -111,7 +111,7 @@ intelligent-markdown/
 │   │
 │   └── fixtures/               # Test fixtures
 │       ├── player_config.lua
-│       └── sample_config.md
+│       └── player.config.md
 │
 ├── docs/                       # Documentation
 │   └── ARCHITECTURE.md         # Architecture doc (this file)

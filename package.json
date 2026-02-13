@@ -92,7 +92,7 @@
         },
         "intelligentMarkdown.autoOpenPreview": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically open config preview when opening Markdown files"
         },
         "intelligentMarkdown.autoOpenPreviewPattern": {
