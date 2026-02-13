@@ -491,25 +491,27 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         let cellInput = '';
 
         switch (col.type) {
-          case 'number':
+          case 'number': {
             const min = col.min !== undefined ? `min="${col.min}"` : '';
             const max = col.max !== undefined ? `max="${col.max}"` : '';
             const step = col.step !== undefined ? `step="${col.step}"` : 'step="1"';
             cellInput = `<input type="number" class="table-cell-input" id="${cellId}" value="${cellValue}" ${min} ${max} ${step} ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
             break;
+          }
           case 'string':
             cellInput = `<input type="text" class="table-cell-input" id="${cellId}" value="${this.escapeHtml(String(cellValue))}" ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
             break;
           case 'boolean':
             cellInput = `<input type="checkbox" class="table-cell-checkbox" id="${cellId}" ${cellValue ? 'checked' : ''} ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
             break;
-          case 'select':
+          case 'select': {
             const opts = (col.options || []).map(opt => {
               const selected = opt.value === cellValue || String(opt.value) === String(cellValue) ? 'selected' : '';
               return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
             }).join('');
             cellInput = `<select class="table-cell-select" id="${cellId}" ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">${opts}</select>`;
             break;
+          }
         }
 
         return `<td>${cellInput}</td>`;
