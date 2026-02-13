@@ -174,7 +174,20 @@ export class LuaParser {
         break;
       case 'StringLiteral':
         type = 'string';
-        value = node.value;
+        // luaparse 的 StringLiteral 节点中，value 可能为 null，实际值在 raw 中
+        // raw 包含引号，需要去除: "zh-CN" -> zh-CN 或 'text' -> text
+        if (node.value !== null && node.value !== undefined) {
+          value = node.value;
+        } else if (node.raw) {
+          // 去除首尾的引号（支持单引号和双引号）
+          const raw = node.raw as string;
+          if ((raw.startsWith('"') && raw.endsWith('"')) || 
+              (raw.startsWith("'") && raw.endsWith("'"))) {
+            value = raw.slice(1, -1);
+          } else {
+            value = raw;
+          }
+        }
         break;
       case 'BooleanLiteral':
         type = 'boolean';
