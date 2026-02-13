@@ -1,6 +1,13 @@
 # Intelligent Markdown for Lua
 
+[![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/liubai01.intelligent-markdown?style=flat-square&label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
+[![Visual Studio Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/liubai01.intelligent-markdown?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
+[![Visual Studio Marketplace Rating](https://img.shields.io/visual-studio-marketplace/r/liubai01.intelligent-markdown?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
 A VS Code extension for two-way binding between Markdown documents and Lua configuration files.
+
+**[Install from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)**
 
 ## Features
 
@@ -30,7 +37,9 @@ A VS Code extension for two-way binding between Markdown documents and Lua confi
 
 ### From VS Code Marketplace
 
-Search for "Intelligent Markdown for Lua" in VS Code Extensions.
+**[📦 Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)**
+
+Or search for **"Intelligent Markdown for Lua"** in VS Code Extensions (`Ctrl+Shift+X`).
 
 ### From Source
 
@@ -237,3 +246,7 @@ intelligent-markdown/
 ## License
 
 MIT
+
+---
+
+**[⭐ Star on GitHub](https://github.com/liubai01/IntelligentMarkdown)** | **[📦 VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)** | **[🐛 Report Issues](https://github.com/liubai01/IntelligentMarkdown/issues)**
