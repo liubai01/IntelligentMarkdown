@@ -3,12 +3,34 @@
  */
 
 /** 支持的控件类型 */
-export type ConfigType = 'number' | 'slider' | 'string' | 'boolean' | 'select' | 'color' | 'array';
+export type ConfigType = 'number' | 'slider' | 'string' | 'boolean' | 'select' | 'color' | 'array' | 'table';
 
 /** 选项项 */
 export interface SelectOption {
   value: string | number;
   label: string;
+}
+
+/** 表格列定义 */
+export interface TableColumn {
+  /** 列键名（对应 Lua table 字段） */
+  key: string;
+  /** 列显示标签 */
+  label: string;
+  /** 列类型 */
+  type: 'number' | 'string' | 'boolean' | 'select';
+  /** 数字类型的最小值 */
+  min?: number;
+  /** 数字类型的最大值 */
+  max?: number;
+  /** 数字类型的步进值 */
+  step?: number;
+  /** select 类型的选项 */
+  options?: SelectOption[];
+  /** 是否只读 */
+  readonly?: boolean;
+  /** 列宽度（CSS） */
+  width?: string;
 }
 
 /** 配置块定义 */
@@ -37,6 +59,8 @@ export interface ConfigBlock {
   unit?: string;
   /** 是否只读 */
   readonly?: boolean;
+  /** table 类型的列定义 */
+  columns?: TableColumn[];
 }
 
 /** 解析后的配置块（带位置信息） */

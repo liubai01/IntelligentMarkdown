@@ -69,7 +69,7 @@ export class ConfigBlockParser {
       }
 
       // 验证类型
-      const validTypes: ConfigType[] = ['number', 'slider', 'string', 'boolean', 'select', 'color', 'array'];
+      const validTypes: ConfigType[] = ['number', 'slider', 'string', 'boolean', 'select', 'color', 'array', 'table'];
       if (!validTypes.includes(parsed.type)) {
         return { success: false, error: `无效的类型: ${parsed.type}` };
       }
@@ -86,7 +86,8 @@ export class ConfigBlockParser {
         step: parsed.step,
         unit: parsed.unit,
         readonly: parsed.readonly,
-        options: parsed.options
+        options: parsed.options,
+        columns: parsed.columns
       };
 
       // 处理 range 字段
@@ -142,6 +143,11 @@ export class ConfigBlockParser {
       case 'select':
         if (!block.options || !Array.isArray(block.options) || block.options.length === 0) {
           errors.push('select 类型需要 options 数组');
+        }
+        break;
+      case 'table':
+        if (!block.columns || !Array.isArray(block.columns) || block.columns.length === 0) {
+          errors.push('table 类型需要 columns 数组');
         }
         break;
     }

@@ -258,6 +258,49 @@ export class LuaParser {
   }
 
   /**
+   * 提取表格数组的详细结构（用于 table 控件）
+   * 返回数组中每个元素的完整字段信息，包括 range 信息
+   */
+  extractTableArray(node: any): Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }> | null {
+    if (!node || node.type !== 'TableConstructorExpression') {
+      return null;
+    }
+
+    const result: Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }> = [];
+    
+    for (const field of node.fields) {
+      if (field.type === 'TableValue' && field.value.type === 'TableConstructorExpression') {
+        // 这是一个数组元素，且是一个对象
+        const rowData: Record<string, any> = {};
+        const rowRanges: Record<string, [number, number]> = {};
+
+        for (const subField of field.value.fields) {
+          let key: string | null = null;
+          let valueNode: any = null;
+
+          if (subField.type === 'TableKeyString') {
+            key = subField.key.name;
+            valueNode = subField.value;
+          } else if (subField.type === 'TableKey' && subField.key.type === 'StringLiteral') {
+            key = subField.key.value || (subField.key.raw as string).slice(1, -1);
+            valueNode = subField.value;
+          }
+
+          if (key && valueNode) {
+            const extracted = this.extractValueNode(valueNode);
+            rowData[key] = extracted.value;
+            rowRanges[key] = extracted.range;
+          }
+        }
+
+        result.push({ data: rowData, ranges: rowRanges });
+      }
+    }
+
+    return result.length > 0 ? result : null;
+  }
+
+  /**
    * 获取所有顶级变量
    */
   getAllRootVariables(): string[] {

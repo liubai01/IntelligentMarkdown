@@ -47,6 +47,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await this.handleUpdateValue(document, message);
             await this.updateWebview(document, webviewPanel.webview);
             break;
+          case 'updateTableCell':
+            await this.handleUpdateTableCell(document, message);
+            await this.updateWebview(document, webviewPanel.webview);
+            break;
           case 'gotoSource':
             await this.handleGotoSource(message);
             break;
@@ -135,6 +139,78 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     } catch (error) {
       vscode.window.showErrorMessage(
         `更新失败: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * 处理表格单元格更新
+   */
+  private async handleUpdateTableCell(
+    document: vscode.TextDocument,
+    message: { file: string; key: string; rowIndex: number; colKey: string; value: any }
+  ): Promise<void> {
+    try {
+      const mdDir = path.dirname(document.uri.fsPath);
+      const luaPath = this.pathResolver.resolve(mdDir, message.file);
+
+      if (!fs.existsSync(luaPath)) {
+        vscode.window.showErrorMessage(`文件不存在: ${luaPath}`);
+        return;
+      }
+
+      // 读取 Lua 文件
+      const luaCode = fs.readFileSync(luaPath, 'utf-8');
+
+      // 解析并定位表格数组
+      const parser = new LuaParser(luaCode);
+      const result = parser.findNodeByPath(message.key);
+
+      if (!result.success || !result.node) {
+        vscode.window.showErrorMessage(`找不到变量: ${message.key}`);
+        return;
+      }
+
+      // 提取表格数组
+      const tableData = parser.extractTableArray(result.node.value as any);
+      
+      if (!tableData || message.rowIndex >= tableData.length) {
+        vscode.window.showErrorMessage(`无效的行索引: ${message.rowIndex}`);
+        return;
+      }
+
+      // 获取目标单元格的范围
+      const cellRange = tableData[message.rowIndex].ranges[message.colKey];
+      
+      if (!cellRange) {
+        vscode.window.showErrorMessage(`找不到字段: ${message.colKey}`);
+        return;
+      }
+
+      // 确定值类型
+      let valueType: 'number' | 'string' | 'boolean' = 'string';
+      if (typeof message.value === 'number') {
+        valueType = 'number';
+      } else if (typeof message.value === 'boolean') {
+        valueType = 'boolean';
+      }
+
+      // 生成新代码
+      const patcher = new LuaPatcher(luaCode);
+      const newCode = patcher.updateValueByRange(cellRange, message.value, valueType);
+
+      // 写入文件
+      fs.writeFileSync(luaPath, newCode, 'utf-8');
+
+      // 清除缓存
+      this.luaLinker.clearCache(luaPath);
+
+      vscode.window.showInformationMessage(
+        `已更新表格 [${message.rowIndex}].${message.colKey} = ${message.value}`
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `更新表格失败: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -252,6 +328,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           break;
         case 'select':
           inputHtml = this.renderSelectInput(block, blockId);
+          break;
+        case 'table':
+          inputHtml = this.renderTableInput(block, blockId);
           break;
         default:
           inputHtml = this.renderNumberInput(block, blockId);
@@ -382,6 +461,82 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 <select id="${blockId}" class="select-input" onchange="updateValue('${blockId}')">
   ${optionsHtml}
 </select>`;
+  }
+
+  /**
+   * 渲染表格输入
+   */
+  private renderTableInput(block: LinkedConfigBlock, blockId: string): string {
+    if (!block.columns || block.columns.length === 0) {
+      return `<span class="error-message">表格类型需要定义 columns</span>`;
+    }
+
+    // 解析当前值为表格数据
+    const parser = new LuaParser(fs.readFileSync(block.absoluteFilePath, 'utf-8'));
+    const result = parser.findNodeByPath(block.key);
+    
+    if (!result.success || !result.node || !result.node.value) {
+      return `<span class="error-message">无法读取表格数据</span>`;
+    }
+
+    // 提取表格数组详细信息
+    const tableData = parser.extractTableArray(result.node.value as any);
+    
+    if (!tableData || tableData.length === 0) {
+      return `<div class="table-empty">暂无数据</div>`;
+    }
+
+    // 生成表头
+    const headerCells = block.columns.map(col => 
+      `<th style="${col.width ? `width: ${col.width};` : ''}">${col.label}</th>`
+    ).join('');
+
+    // 生成表格行
+    const rows = tableData.map((row, rowIndex) => {
+      const cells = block.columns!.map(col => {
+        const cellId = `${blockId}-${rowIndex}-${col.key}`;
+        const cellValue = row.data[col.key] ?? '';
+        let cellInput = '';
+
+        switch (col.type) {
+          case 'number':
+            const min = col.min !== undefined ? `min="${col.min}"` : '';
+            const max = col.max !== undefined ? `max="${col.max}"` : '';
+            const step = col.step !== undefined ? `step="${col.step}"` : 'step="1"';
+            cellInput = `<input type="number" class="table-cell-input" id="${cellId}" value="${cellValue}" ${min} ${max} ${step} ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
+            break;
+          case 'string':
+            cellInput = `<input type="text" class="table-cell-input" id="${cellId}" value="${this.escapeHtml(String(cellValue))}" ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
+            break;
+          case 'boolean':
+            cellInput = `<input type="checkbox" class="table-cell-checkbox" id="${cellId}" ${cellValue ? 'checked' : ''} ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
+            break;
+          case 'select':
+            const opts = (col.options || []).map(opt => {
+              const selected = opt.value === cellValue || String(opt.value) === String(cellValue) ? 'selected' : '';
+              return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+            }).join('');
+            cellInput = `<select class="table-cell-select" id="${cellId}" ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">${opts}</select>`;
+            break;
+        }
+
+        return `<td>${cellInput}</td>`;
+      }).join('');
+
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    return `
+<div class="table-wrapper">
+  <table class="config-table">
+    <thead>
+      <tr>${headerCells}</tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+</div>`;
   }
 
   /**
@@ -946,6 +1101,108 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
+      /* ========== 表格样式 ========== */
+      .table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        margin: 8px 0;
+      }
+
+      .config-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        background: var(--color-canvas-default);
+        border: 1px solid var(--color-border-muted);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .config-table thead {
+        background: var(--color-canvas-subtle);
+      }
+
+      .config-table th {
+        padding: 8px 12px;
+        text-align: left;
+        font-weight: 600;
+        color: var(--color-fg-default);
+        border-bottom: 2px solid var(--color-border-default);
+      }
+
+      .config-table td {
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--color-border-muted);
+      }
+
+      .config-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .config-table tbody tr:hover {
+        background: var(--color-canvas-subtle);
+      }
+
+      .table-cell-input {
+        width: 100%;
+        padding: 4px 8px;
+        border: 1px solid var(--input-border);
+        border-radius: 4px;
+        background: var(--input-bg);
+        color: var(--input-fg);
+        font-size: 12px;
+        transition: border-color 0.15s;
+      }
+
+      .table-cell-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+      }
+
+      .table-cell-input[readonly] {
+        background: rgba(128, 128, 128, 0.1);
+        cursor: not-allowed;
+      }
+
+      .table-cell-checkbox {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+      }
+
+      .table-cell-checkbox:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .table-cell-select {
+        width: 100%;
+        padding: 4px 8px;
+        border: 1px solid var(--input-border);
+        border-radius: 4px;
+        background: var(--input-bg);
+        color: var(--input-fg);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .table-cell-select:focus {
+        outline: none;
+        border-color: var(--color-accent);
+      }
+
+      .table-cell-select:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .table-empty {
+        padding: 24px;
+        text-align: center;
+        color: var(--color-fg-muted);
+        font-size: 13px;
+      }
+
       /* ========== 更新动画 ========== */
       @keyframes flash {
         0% { background-color: rgba(26, 127, 55, 0.15); }
@@ -1026,6 +1283,45 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (block) {
           block.classList.remove('updated');
           void block.offsetWidth; // 触发重绘
+          block.classList.add('updated');
+        }
+      }
+
+      function updateTableCell(blockId, rowIndex, colKey) {
+        const cellId = blockId + '-' + rowIndex + '-' + colKey;
+        const input = document.getElementById(cellId);
+        const data = blockData[blockId];
+        if (!input || !data) return;
+
+        let value;
+        if (input.type === 'checkbox') {
+          value = input.checked;
+        } else if (input.type === 'number') {
+          value = parseFloat(input.value);
+          if (isNaN(value)) return;
+        } else if (input.tagName === 'SELECT') {
+          value = input.value;
+          const numValue = parseFloat(value);
+          if (!isNaN(numValue)) value = numValue;
+        } else {
+          value = input.value;
+        }
+
+        // 发送表格单元格更新消息
+        vscode.postMessage({
+          type: 'updateTableCell',
+          file: data.file,
+          key: data.key,
+          rowIndex: rowIndex,
+          colKey: colKey,
+          value: value
+        });
+
+        // 添加更新动画
+        const block = input.closest('.config-block');
+        if (block) {
+          block.classList.remove('updated');
+          void block.offsetWidth;
           block.classList.add('updated');
         }
       }

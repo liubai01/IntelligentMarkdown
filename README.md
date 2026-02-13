@@ -92,6 +92,7 @@ Click the **preview icon** (📖) in the top-right corner, or press `Ctrl+Shift+
 | `boolean` | On/Off toggles | Sound, Debug mode |
 | `select` | Choice from list | Difficulty, Language |
 | `string` | Text values | Names, Paths |
+| `table` | Array of objects | Item lists, Character stats |
 
 ---
 
@@ -116,7 +117,33 @@ step: 5                       # Increment step
 unit: "px"                    # Unit display
 options:                      # For select type
   - { value: "a", label: "Option A" }
+columns:                      # For table type (array of objects)
+  - { key: "id", label: "ID", type: "number", readonly: true }
+  - { key: "name", label: "Name", type: "string" }
+  - { key: "value", label: "Value", type: "number", min: 0, max: 100 }
 ```
+
+### Table Type Example
+
+Use `table` type to batch edit arrays of Lua objects in a spreadsheet-like interface:
+
+````markdown
+```lua-config
+file: ./items.lua
+key: Items.Weapons
+type: table
+label: Weapon Configuration
+columns:
+  - { key: "id", label: "ID", type: "number", readonly: true, width: "80px" }
+  - { key: "name", label: "Weapon Name", type: "string", width: "150px" }
+  - { key: "attack", label: "Attack Power", type: "number", min: 1, max: 999, width: "120px" }
+  - { key: "price", label: "Price", type: "number", min: 0, max: 99999, width: "100px" }
+  - { key: "rare", label: "Rarity", type: "select", width: "120px", 
+      options: [{ value: "common", label: "Common" }, { value: "rare", label: "Rare" }] }
+```
+````
+
+**Supported column types**: `number`, `string`, `boolean`, `select`
 
 ---
 

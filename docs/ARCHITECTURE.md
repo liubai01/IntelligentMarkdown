@@ -311,6 +311,7 @@ export class LuaPatcher {
 | `boolean` | Toggle switch | Click to toggle true/false |
 | `select` | Dropdown | Supports options list |
 | `string` | Text input | General string input |
+| `table` | Editable data table | Batch edit Lua arrays with spreadsheet interface |
 
 ---
 
@@ -441,10 +442,10 @@ export class LuaPatcher {
 
 | Feature | Priority | Status |
 |---------|----------|--------|
+| Table Editor | High | ✅ |
 | Type Validation | High | ⬜ |
 | Auto-complete | Medium | ⬜ |
 | Array Editing | Medium | ⬜ |
-| Table Preview | Low | ⬜ |
 | Color Picker | Low | ⬜ |
 | Batch Operations | Low | ⬜ |
 

@@ -209,6 +209,62 @@ type: string
 - Text input field
 - Press Enter or blur to save
 
+### Table Editor (NEW!)
+
+Best for batch editing arrays of Lua objects in a spreadsheet-like interface. Perfect for managing collections like item lists, character stats, or configuration tables.
+
+```yaml
+type: table
+columns:
+  - key: "id"              # Field name in Lua table
+    label: "ID"            # Display label
+    type: "number"         # Column type
+    readonly: true         # Optional: prevent editing
+    width: "80px"          # Optional: column width
+  - key: "name"
+    label: "Name"
+    type: "string"
+    width: "150px"
+  - key: "power"
+    label: "Power"
+    type: "number"
+    min: 1                 # Optional: validation
+    max: 999
+    step: 5
+  - key: "enabled"
+    label: "Enabled"
+    type: "boolean"
+  - key: "rarity"
+    label: "Rarity"
+    type: "select"
+    options:               # Required for select
+      - { value: "common", label: "Common" }
+      - { value: "rare", label: "Rare" }
+      - { value: "epic", label: "Epic" }
+```
+
+**Example Lua Structure:**
+```lua
+Items = {
+    { id = 1, name = "Sword", power = 50, enabled = true, rarity = "common" },
+    { id = 2, name = "Axe", power = 75, enabled = true, rarity = "rare" },
+    { id = 3, name = "Bow", power = 60, enabled = false, rarity = "common" }
+}
+```
+
+**Column Types:**
+- `number` - Numeric input with validation (min/max/step)
+- `string` - Text input field
+- `boolean` - Checkbox
+- `select` - Dropdown with options
+
+**Features:**
+- Edit multiple rows simultaneously
+- Each cell updates the Lua file independently
+- Read-only columns for IDs or fixed values
+- Type validation for each column
+- Custom column widths
+
 ---
 
 ## Config Block Reference
@@ -219,7 +275,7 @@ type: string
 |----------|-------------|---------|
 | `file` | Relative path to Lua file | `./config.lua` |
 | `key` | Lua variable path | `Config.Player.HP` |
-| `type` | Control type | `number`, `slider`, `boolean`, `select`, `string` |
+| `type` | Control type | `number`, `slider`, `boolean`, `select`, `string`, `table` |
 
 ### Optional Properties
 
@@ -232,6 +288,7 @@ type: string
 | `step` | Increment step | `number`, `slider` |
 | `unit` | Unit display (e.g., "px", "ms") | `number`, `slider` |
 | `options` | Option list | `select` |
+| `columns` | Column definitions | `table` |
 
 ### Variable Path Syntax
 
