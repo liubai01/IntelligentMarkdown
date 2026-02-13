@@ -2,7 +2,7 @@
   "name": "intelligent-markdown",
   "displayName": "Intelligent Markdown for Lua",
   "description": "Two-way binding between Markdown documents and Lua configuration files. Edit Lua configs visually in Markdown with real-time sync.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "liubai01",
   "repository": {
     "type": "git",

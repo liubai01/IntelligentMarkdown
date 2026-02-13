@@ -249,6 +249,13 @@ npm run watch
 
 ## 📝 Changelog
 
+### v0.2.1
+
+- 📖 Add comprehensive User Guide documentation
+- 📝 Improve README with better quick start guide
+- 🔧 Fix ESLint configuration for CI
+- 🐛 Fix Lua string value parsing issue
+
 ### v0.2.0
 
 - ✨ Visual Webview editor with multiple control types
