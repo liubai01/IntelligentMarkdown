@@ -1,52 +1,58 @@
 # Intelligent Markdown for Lua
 
-基于智能 Markdown 的 Lua 变量双向绑定框架 - VS Code 插件
+A VS Code extension for two-way binding between Markdown documents and Lua configuration files.
 
-## 功能特性
+## Features
 
-### 第一阶段 (MVP) ✅
+### Phase 1 (MVP) ✅
 
-- ✅ **Lua AST 解析**：准确解析 Lua 文件并定位变量
-- ✅ **Markdown 配置块**：支持 `lua-config` 代码块语法
-- ✅ **文档链接**：点击配置块中的 key 可跳转到 Lua 源码
-- ✅ **悬停提示**：鼠标悬停显示变量当前值和详细信息
-- ✅ **内联值显示**：在编辑器中直接显示 Lua 变量的当前值
-- ✅ **命令面板**：通过命令查看所有配置绑定
+- ✅ **Lua AST Parsing**: Accurately parse Lua files and locate variables
+- ✅ **Markdown Config Blocks**: Support `lua-config` fenced code block syntax
+- ✅ **Document Links**: Click on keys in config blocks to jump to Lua source
+- ✅ **Hover Preview**: Display current value and details on hover
+- ✅ **Inline Values**: Show Lua variable values directly in the editor
+- ✅ **Command Palette**: View all config bindings via commands
 
-### 第二阶段 (Webview 可视化编辑器) ✅
+### Phase 2 (Webview Visual Editor) ✅
 
-- ✅ **可视化预览**：Markdown 渲染为美观的文档界面
-- ✅ **配置控件**：将 `lua-config` 代码块渲染为可编辑控件
-  - 📝 **数字输入框**：带 +/- 按钮，支持 min/max/step
-  - 🎚️ **滑动条**：实时拖动调整数值
-  - 🔘 **开关按钮**：布尔值快速切换
-  - 📋 **下拉选择**：预设选项列表
-  - ✏️ **文本输入**：字符串编辑
-- ✅ **双向绑定**：修改控件值自动同步到 Lua 文件
-- ✅ **跳转源码**：点击定位按钮跳转到 Lua 代码
-- ✅ **自动打开预览**：可配置打开 Markdown 时自动显示预览
+- ✅ **Visual Preview**: Render Markdown as a beautiful document interface
+- ✅ **Config Controls**: Render `lua-config` blocks as editable controls
+  - 📝 **Number Input**: With +/- buttons, supports min/max/step
+  - 🎚️ **Slider**: Real-time drag to adjust values
+  - 🔘 **Toggle Switch**: Quick boolean toggle
+  - 📋 **Dropdown Select**: Preset option list
+  - ✏️ **Text Input**: String editing
+- ✅ **Two-way Binding**: Control changes automatically sync to Lua files
+- ✅ **Jump to Source**: Click locate button to jump to Lua code
+- ✅ **Auto-open Preview**: Configurable auto-preview when opening Markdown
 
-## 安装
+## Installation
+
+### From VS Code Marketplace
+
+Search for "Intelligent Markdown for Lua" in VS Code Extensions.
+
+### From Source
 
 ```bash
-# 安装依赖
+# Install dependencies
 npm install
 
-# 编译
+# Compile
 npm run compile
 
-# 开发模式（监听变化）
+# Development mode (watch)
 npm run watch
 ```
 
-## 使用方法
+## Usage
 
-### 1. 创建配置 Markdown
+### 1. Create Config Markdown
 
-在 Markdown 文件中使用 `lua-config` 代码块定义 Lua 变量绑定：
+Use `lua-config` code blocks in Markdown files to define Lua variable bindings:
 
 ````markdown
-# 玩家配置
+# Player Config
 
 ```lua-config
 file: ./scripts/player_config.lua
@@ -54,43 +60,43 @@ key: PlayerConfig.BaseStats.HP
 type: number
 min: 100
 max: 10000
-label: 基础生命值
+label: Base Health
 ```
 ````
 
-### 2. 打开配置预览
+### 2. Open Config Preview
 
-- **方式一**：点击编辑器右上角的预览图标 📖
-- **方式二**：`Ctrl+Shift+P` → "打开配置预览"
-- **方式三**：启用自动预览配置（见下方配置说明）
+- **Option 1**: Click the preview icon 📖 in the top-right corner
+- **Option 2**: `Ctrl+Shift+P` → "Open Config Preview"
+- **Option 3**: Enable auto-preview (see configuration below)
 
-### 3. 配置块属性
+### 3. Config Block Properties
 
-| 属性 | 必填 | 说明 |
-|------|------|------|
-| `file` | ✅ | Lua 文件相对路径 |
-| `key` | ✅ | Lua 变量路径，如 `Config.Stats.HP` |
-| `type` | ✅ | 控件类型：`number`, `slider`, `string`, `boolean`, `select` |
-| `label` | ❌ | 显示标签 |
-| `min/max` | ❌ | 数值范围 |
-| `range` | ❌ | slider 类型的范围，格式 `[min, max]` |
-| `step` | ❌ | 步进值 |
-| `options` | ❌ | select 类型的选项列表 |
-| `unit` | ❌ | 单位显示 |
+| Property | Required | Description |
+|----------|----------|-------------|
+| `file` | ✅ | Relative path to Lua file |
+| `key` | ✅ | Lua variable path, e.g., `Config.Stats.HP` |
+| `type` | ✅ | Control type: `number`, `slider`, `string`, `boolean`, `select` |
+| `label` | ❌ | Display label |
+| `min/max` | ❌ | Value range |
+| `range` | ❌ | Range for slider type, format `[min, max]` |
+| `step` | ❌ | Step increment |
+| `options` | ❌ | Option list for select type |
+| `unit` | ❌ | Unit display |
 
-### 4. 插件配置
+### 4. Extension Settings
 
-在 VS Code 设置中搜索 `intelligentMarkdown`：
+Search `intelligentMarkdown` in VS Code settings:
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|-------|------|--------|------|
-| `autoSave` | boolean | `true` | 自动保存对 Lua 文件的修改 |
-| `showInlineValues` | boolean | `true` | 在编辑器中显示内联值 |
-| `autoOpenPreview` | boolean | `false` | 打开 Markdown 时自动显示预览 |
-| `autoOpenPreviewPattern` | string | `**/*.config.md` | 自动预览的文件匹配模式 |
-| `autoOpenPreviewOnlyWithLuaConfig` | boolean | `true` | 仅当文件包含 lua-config 块时才自动预览 |
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `autoSave` | boolean | `true` | Auto-save Lua file changes |
+| `showInlineValues` | boolean | `true` | Show inline values in editor |
+| `autoOpenPreview` | boolean | `false` | Auto-open preview for Markdown files |
+| `autoOpenPreviewPattern` | string | `**/*.config.md` | Glob pattern for auto-preview |
+| `autoOpenPreviewOnlyWithLuaConfig` | boolean | `true` | Only auto-preview if file contains lua-config blocks |
 
-#### 推荐配置
+#### Recommended Configuration
 
 ```json
 {
@@ -100,32 +106,32 @@ label: 基础生命值
 }
 ```
 
-## 示例
+## Example
 
-### Lua 配置文件 (`player_config.lua`)
+### Lua Config File (`player_config.lua`)
 
 ```lua
 PlayerConfig = {
     BaseStats = {
-        HP = 1000,      -- 基础生命值
-        MP = 500,       -- 基础魔法值
-        Attack = 100,   -- 基础攻击力
-        MoveSpeed = 200 -- 移动速度
+        HP = 1000,      -- Base health
+        MP = 500,       -- Base mana
+        Attack = 100,   -- Base attack
+        MoveSpeed = 200 -- Movement speed
     },
     Settings = {
         ShowTutorial = true,
-        Language = "zh-CN",
+        Language = "en-US",
         Difficulty = "normal"
     }
 }
 ```
 
-### Markdown 配置文档 (`config.md`)
+### Markdown Config Document (`config.md`)
 
 ````markdown
-# 玩家属性配置
+# Player Attributes
 
-## 基础生命值
+## Base Health
 
 ```lua-config
 file: ./player_config.lua
@@ -133,10 +139,10 @@ key: PlayerConfig.BaseStats.HP
 type: slider
 range: [100, 10000]
 step: 100
-label: 生命值上限
+label: Max Health
 ```
 
-## 移动速度
+## Movement Speed
 
 ```lua-config
 file: ./player_config.lua
@@ -145,87 +151,87 @@ type: number
 min: 100
 max: 500
 step: 10
-unit: 单位/秒
-label: 基础移动速度
+unit: units/sec
+label: Base Move Speed
 ```
 
-## 新手引导
+## Tutorial
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Settings.ShowTutorial
 type: boolean
-label: 显示新手引导
+label: Show Tutorial
 ```
 
-## 游戏难度
+## Difficulty
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Settings.Difficulty
 type: select
 options:
-  - { value: "easy", label: "简单" }
-  - { value: "normal", label: "普通" }
-  - { value: "hard", label: "困难" }
-label: 游戏难度
+  - { value: "easy", label: "Easy" }
+  - { value: "normal", label: "Normal" }
+  - { value: "hard", label: "Hard" }
+label: Game Difficulty
 ```
 ````
 
-## 开发
+## Development
 
-### 运行测试
+### Run Tests
 
 ```bash
 npm test
 ```
 
-### 调试插件
+### Debug Extension
 
-1. 选择 "Run Extension (Compile First)" 配置
-2. 按 `F5` 启动调试
-3. 在新窗口中打开包含 `lua-config` 代码块的 Markdown 文件
-4. 点击右上角预览按钮或使用命令打开预览
+1. Select "Run Extension (Compile First)" configuration
+2. Press `F5` to start debugging
+3. Open a Markdown file containing `lua-config` blocks
+4. Click preview button or use command to open preview
 
-### 调试配置
+### Debug Configurations
 
-| 配置名称 | 说明 |
-|---------|------|
-| Run Extension | 启动 watch 模式（支持热更新） |
-| Run Extension (Compile First) | 先编译再启动（推荐） |
-| Run Extension (No Build) | 直接启动，不编译 |
+| Config Name | Description |
+|-------------|-------------|
+| Run Extension | Start watch mode (hot reload) |
+| Run Extension (Compile First) | Compile then start (recommended) |
+| Run Extension (No Build) | Start directly without compilation |
 
-## 路线图
+## Roadmap
 
-- [x] 第一阶段：MVP 原型
-- [x] 第二阶段：Webview 可视化编辑器
-- [x] 第三阶段：双向绑定（修改即写入）
-- [ ] 第四阶段：高级功能（智能补全、类型校验、数组编辑等）
+- [x] Phase 1: MVP Prototype
+- [x] Phase 2: Webview Visual Editor
+- [x] Phase 3: Two-way Binding
+- [ ] Phase 4: Advanced Features (auto-complete, type validation, array editing)
 
-## 技术栈
+## Tech Stack
 
 - TypeScript
-- [luaparse](https://github.com/fstirlitz/luaparse) - Lua AST 解析
+- [luaparse](https://github.com/fstirlitz/luaparse) - Lua AST parsing
 - VS Code Extension API
 - VS Code Webview API
 
-## 项目结构
+## Project Structure
 
 ```
 intelligent-markdown/
 ├── src/
-│   ├── extension.ts            # 插件入口
-│   ├── core/                   # 核心模块
-│   │   ├── parser/             # 解析器（Lua、Markdown）
-│   │   ├── linker/             # 链接器（路径解析）
-│   │   └── patcher/            # 修补器（值回写）
-│   ├── editor/                 # Webview 编辑器
-│   ├── providers/              # VS Code 提供者
-│   └── types/                  # 类型定义
-├── test/                       # 测试文件
-│   ├── fixtures/               # 测试用例
-│   └── unit/                   # 单元测试
-└── docs/                       # 文档
+│   ├── extension.ts            # Extension entry
+│   ├── core/                   # Core modules
+│   │   ├── parser/             # Parsers (Lua, Markdown)
+│   │   ├── linker/             # Linkers (path resolution)
+│   │   └── patcher/            # Patchers (value write-back)
+│   ├── editor/                 # Webview editor
+│   ├── providers/              # VS Code providers
+│   └── types/                  # Type definitions
+├── test/                       # Test files
+│   ├── fixtures/               # Test fixtures
+│   └── unit/                   # Unit tests
+└── docs/                       # Documentation
 ```
 
 ## License

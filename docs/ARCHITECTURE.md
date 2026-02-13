@@ -1,36 +1,36 @@
-# 智能 Markdown Lua 变量双向绑定框架
+# Intelligent Markdown for Lua - Architecture Document
 
-## 项目概述
+## Project Overview
 
-本项目是一个 VS Code 插件，旨在为游戏策划提供一个基于 Markdown 的可视化配置编辑器。通过在 Markdown 文档中定义特殊的链接语法，策划可以直接在文档中修改 Lua 配置文件中的变量值，实现**所见即所得**的配置体验。
+This project is a VS Code extension that provides a Markdown-based visual configuration editor for game designers. By defining special syntax in Markdown documents, designers can directly modify Lua configuration file variables in a **WYSIWYG** experience.
 
-### 核心价值
+### Core Value
 
-- **降低门槛**：策划无需理解 Lua 语法，只需在熟悉的 Markdown 文档中操作
-- **保持灵活性**：程序员仍可直接编辑 Lua 代码，保持代码结构不变
-- **双向同步**：Markdown 和 Lua 文件实时双向同步，任一方修改都能反映到另一方
+- **Lower Barrier**: Designers don't need to understand Lua syntax, just operate in familiar Markdown documents
+- **Maintain Flexibility**: Programmers can still directly edit Lua code, keeping code structure intact
+- **Two-way Sync**: Real-time bidirectional sync between Markdown and Lua files
 
-### 当前实现状态
+### Current Implementation Status
 
-| 阶段 | 状态 | 说明 |
-|------|------|------|
-| 第一阶段：MVP 原型 | ✅ 已完成 | Lua 解析、文档链接、悬停提示 |
-| 第二阶段：Webview 编辑器 | ✅ 已完成 | 可视化预览、配置控件 |
-| 第三阶段：双向绑定 | ✅ 已完成 | 修改控件自动写入 Lua |
-| 第四阶段：高级功能 | 🔄 进行中 | 智能补全、类型校验等 |
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1: MVP Prototype | ✅ Complete | Lua parsing, document links, hover tips |
+| Phase 2: Webview Editor | ✅ Complete | Visual preview, config controls |
+| Phase 3: Two-way Binding | ✅ Complete | Control changes auto-write to Lua |
+| Phase 4: Advanced Features | 🔄 In Progress | Auto-complete, type validation, etc. |
 
 ---
 
-## 一、总体架构设计
+## 1. Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    表现层 (Presentation Layer)                    │
+│                    Presentation Layer                            │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │              Smart Markdown Editor (Webview)               │  │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐  │  │
 │  │  │ Input   │  │ Slider  │  │ Select  │  │ Boolean     │  │  │
-│  │  │ 输入框   │  │ 滑动条   │  │ 下拉框   │  │ 开关按钮    │  │  │
+│  │  │ Number  │  │ Range   │  │ Dropdown│  │ Toggle      │  │  │
 │  │  └─────────┘  └─────────┘  └─────────┘  └─────────────┘  │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -38,105 +38,105 @@
                               │ postMessage
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  逻辑层 (Extension Host Layer)                    │
+│                    Logic Layer (Extension Host)                  │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │  │   Linker    │  │   Watcher   │  │  SmartMarkdownEditor    │  │
-│  │  链接解析器  │  │  文件监听器  │  │     预览编辑器提供者      │  │
+│  │  Resolver   │  │   Monitor   │  │     Provider            │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                               ▲
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     数据层 (AST Layer)                           │
+│                       Data Layer (AST)                           │
 │  ┌─────────────────────┐  ┌─────────────────────────────────┐   │
 │  │     Lua Parser      │  │       Lua Patcher               │   │
-│  │   (luaparse AST)    │  │    (精准值替换，保留格式)         │   │
+│  │   (luaparse AST)    │  │    (Precise value replacement)  │   │
 │  └─────────────────────┘  └─────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 二、项目目录结构
+## 2. Project Structure
 
 ```
 intelligent-markdown/
-├── package.json                 # 插件配置文件
-├── tsconfig.json               # TypeScript 配置
-├── webpack.config.js           # Webpack 打包配置
-├── vitest.config.ts            # 测试配置
+├── package.json                 # Extension manifest
+├── tsconfig.json               # TypeScript config
+├── webpack.config.js           # Webpack bundler config
+├── vitest.config.ts            # Test config
 │
 ├── src/
-│   ├── extension.ts            # 插件入口
+│   ├── extension.ts            # Extension entry point
 │   │
-│   ├── core/                   # 核心模块
+│   ├── core/                   # Core modules
 │   │   ├── index.ts
 │   │   ├── parser/
-│   │   │   ├── luaParser.ts         # Lua AST 解析器
-│   │   │   └── configBlockParser.ts # 配置块解析器
+│   │   │   ├── luaParser.ts         # Lua AST parser
+│   │   │   └── configBlockParser.ts # Config block parser
 │   │   │
 │   │   ├── linker/
-│   │   │   ├── luaLinker.ts         # Lua 文件链接器
-│   │   │   └── pathResolver.ts      # 路径解析器
+│   │   │   ├── luaLinker.ts         # Lua file linker
+│   │   │   └── pathResolver.ts      # Path resolver
 │   │   │
 │   │   └── patcher/
-│   │       └── luaPatcher.ts        # Lua 文件修补器
+│   │       └── luaPatcher.ts        # Lua file patcher
 │   │
-│   ├── editor/                 # 编辑器模块
+│   ├── editor/                 # Editor module
 │   │   ├── index.ts
-│   │   └── smartMarkdownEditor.ts   # Webview 预览编辑器
+│   │   └── smartMarkdownEditor.ts   # Webview preview editor
 │   │
-│   ├── providers/              # VS Code 提供者
+│   ├── providers/              # VS Code providers
 │   │   ├── index.ts
-│   │   ├── documentLinkProvider.ts  # 文档链接
-│   │   ├── hoverProvider.ts         # 悬停提示
-│   │   └── decorationProvider.ts    # 内联装饰器
+│   │   ├── documentLinkProvider.ts  # Document links
+│   │   ├── hoverProvider.ts         # Hover tooltips
+│   │   └── decorationProvider.ts    # Inline decorations
 │   │
-│   ├── commands/               # 命令
+│   ├── commands/               # Commands
 │   │   ├── index.ts
-│   │   └── showVariableValue.ts     # 显示变量值命令
+│   │   └── showVariableValue.ts     # Show variable value command
 │   │
-│   └── types/                  # 类型定义
+│   └── types/                  # Type definitions
 │       ├── index.ts
-│       ├── configBlock.ts           # 配置块类型
-│       ├── luaNode.ts               # Lua AST 节点类型
-│       └── luaparse.d.ts            # luaparse 类型声明
+│       ├── configBlock.ts           # Config block types
+│       ├── luaNode.ts               # Lua AST node types
+│       └── luaparse.d.ts            # luaparse type declarations
 │
-├── test/                       # 测试文件
+├── test/                       # Test files
 │   ├── unit/
 │   │   ├── luaParser.test.ts
 │   │   ├── luaPatcher.test.ts
 │   │   └── configBlockParser.test.ts
 │   │
-│   └── fixtures/               # 测试用例文件
+│   └── fixtures/               # Test fixtures
 │       ├── player_config.lua
 │       └── sample_config.md
 │
-├── docs/                       # 文档
-│   └── ARCHITECTURE.md         # 架构文档（本文件）
+├── docs/                       # Documentation
+│   └── ARCHITECTURE.md         # Architecture doc (this file)
 │
-└── .vscode/                    # VS Code 配置
-    ├── launch.json             # 调试配置
-    ├── tasks.json              # 任务配置
-    └── settings.json           # 编辑器设置
+└── .vscode/                    # VS Code config
+    ├── launch.json             # Debug config
+    ├── tasks.json              # Task config
+    └── settings.json           # Editor settings
 ```
 
 ---
 
-## 三、核心模块设计
+## 3. Core Module Design
 
-### 3.1 智能 Markdown 语法定义 (Protocol)
+### 3.1 Smart Markdown Syntax (Protocol)
 
-使用 Markdown 的 Fenced Code Block 语法，定义 `lua-config` 语言标记：
+Using Markdown's Fenced Code Block syntax with `lua-config` language identifier:
 
 ````markdown
-# 玩家基础数值配置
+# Player Base Stats Config
 
-这里配置玩家出生时的基础属性。
+Configure player spawn attributes here.
 
-### 基础生命值
-> 策划备注：初始生命值不要超过 10000，否则会影响游戏平衡。
+### Base Health
+> Designer Note: Initial health should not exceed 10000, or it will affect game balance.
 
 ```lua-config
 file: ./scripts/player_config.lua
@@ -146,10 +146,10 @@ default: 100
 min: 1
 max: 10000
 step: 10
-label: 生命值上限
+label: Max Health
 ```
 
-### 移动速度
+### Movement Speed
 
 ```lua-config
 file: ./scripts/player_config.lua
@@ -158,54 +158,54 @@ type: slider
 default: 200
 range: [100, 500]
 step: 10
-label: 基础移动速度
-unit: 单位/秒
+label: Base Move Speed
+unit: units/sec
 ```
 
-### 角色职业
+### Character Class
 
 ```lua-config
 file: ./scripts/player_config.lua
 key: PlayerConfig.Class
 type: select
 options:
-  - { value: "warrior", label: "战士" }
-  - { value: "mage", label: "法师" }
-  - { value: "archer", label: "弓箭手" }
-label: 默认职业
+  - { value: "warrior", label: "Warrior" }
+  - { value: "mage", label: "Mage" }
+  - { value: "archer", label: "Archer" }
+label: Default Class
 ```
 
-### 是否启用新手引导
+### Tutorial Enabled
 
 ```lua-config
 file: ./scripts/game_settings.lua
 key: GameSettings.Tutorial.Enabled
 type: boolean
-label: 新手引导开关
+label: Tutorial Switch
 ```
 ````
 
-#### 配置块属性说明
+#### Config Block Property Reference
 
-| 属性 | 必填 | 说明 |
-|------|------|------|
-| `file` | ✅ | Lua 文件相对路径（相对于 Markdown 文件） |
-| `key` | ✅ | Lua 变量路径，使用点号分隔嵌套层级 |
-| `type` | ✅ | 控件类型：`number`, `slider`, `string`, `boolean`, `select` |
-| `label` | ❌ | 显示标签，默认使用 key 的最后一段 |
-| `default` | ❌ | 默认值 |
-| `min/max` | ❌ | 数值范围限制 |
-| `range` | ❌ | slider 专用，等同于 [min, max] |
-| `step` | ❌ | 数值步进 |
-| `options` | ❌ | select 专用，选项列表 |
-| `unit` | ❌ | 单位显示 |
-| `readonly` | ❌ | 是否只读 |
+| Property | Required | Description |
+|----------|----------|-------------|
+| `file` | ✅ | Relative path to Lua file (relative to Markdown file) |
+| `key` | ✅ | Lua variable path, dot-separated for nested levels |
+| `type` | ✅ | Control type: `number`, `slider`, `string`, `boolean`, `select` |
+| `label` | ❌ | Display label, defaults to last segment of key |
+| `default` | ❌ | Default value |
+| `min/max` | ❌ | Value range limits |
+| `range` | ❌ | Slider-specific, equivalent to [min, max] |
+| `step` | ❌ | Value step increment |
+| `options` | ❌ | Select-specific, option list |
+| `unit` | ❌ | Unit display |
+| `readonly` | ❌ | Whether read-only |
 
 ---
 
-### 3.2 Lua AST 解析器
+### 3.2 Lua AST Parser
 
-#### 核心实现
+#### Core Implementation
 
 ```typescript
 // src/core/parser/luaParser.ts
@@ -219,43 +219,43 @@ export class LuaParser {
   constructor(code: string) {
     this.code = code;
     this.ast = luaparse.parse(code, {
-      ranges: true,      // 启用范围记录
-      locations: true,   // 启用位置记录
-      comments: true,    // 保留注释信息
+      ranges: true,      // Enable range recording
+      locations: true,   // Enable location recording
+      comments: true,    // Preserve comment info
     });
   }
 
   /**
-   * 根据路径查找 Lua 变量节点
-   * @param keyPath 变量路径，如 "PlayerConfig.BaseStats.HP"
+   * Find Lua variable node by path
+   * @param keyPath Variable path, e.g., "PlayerConfig.BaseStats.HP"
    */
   findValueByPath(keyPath: string): LuaValueResult | null {
     const keys = keyPath.split('.');
-    // 递归遍历 AST，定位目标节点
-    // 返回值、类型、范围信息
+    // Recursively traverse AST to locate target node
+    // Return value, type, and range info
   }
 }
 ```
 
-#### 支持的路径格式
+#### Supported Path Formats
 
-- `Config.BaseStats.HP` - 普通嵌套
-- `Config.Items[1].Name` - 数组索引（计划中）
-- `Config["special-key"].Value` - 字符串键（计划中）
+- `Config.BaseStats.HP` - Regular nesting
+- `Config.Items[1].Name` - Array index (planned)
+- `Config["special-key"].Value` - String key (planned)
 
 ---
 
-### 3.3 Lua 修补器
+### 3.3 Lua Patcher
 
-#### 精准回写策略
+#### Precise Write-back Strategy
 
 ```typescript
 // src/core/patcher/luaPatcher.ts
 
 export class LuaPatcher {
   /**
-   * 更新 Lua 文件中的值
-   * 核心原则：只替换值的部分，保留所有注释和格式
+   * Update value in Lua file
+   * Core principle: Only replace the value portion, preserve all comments and formatting
    */
   updateValue(
     code: string,
@@ -265,12 +265,12 @@ export class LuaPatcher {
   ): string {
     const formattedValue = this.formatLuaValue(newValue, valueType);
     
-    // 精准替换：保留前后的所有内容
+    // Precise replacement: preserve all content before and after
     return code.slice(0, range[0]) + formattedValue + code.slice(range[1]);
   }
 
   /**
-   * 将 JavaScript 值转换为 Lua 格式
+   * Convert JavaScript value to Lua format
    */
   private formatLuaValue(value: any, type: string): string {
     switch (type) {
@@ -289,42 +289,42 @@ export class LuaPatcher {
 
 ---
 
-### 3.4 Webview 预览编辑器
+### 3.4 Webview Preview Editor
 
-#### 功能特性
+#### Feature Status
 
-| 功能 | 状态 | 说明 |
-|------|------|------|
-| Markdown 渲染 | ✅ | 标题、段落、列表、引用、代码块 |
-| 配置块控件 | ✅ | number、slider、boolean、select、string |
-| 值修改同步 | ✅ | 修改控件自动写入 Lua 文件 |
-| 跳转源码 | ✅ | 点击定位按钮跳转到 Lua 代码 |
-| 刷新按钮 | ✅ | 重新读取 Lua 文件更新显示 |
-| 修改高亮 | ✅ | 修改后控件显示高亮反馈 |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Markdown Rendering | ✅ | Headings, paragraphs, lists, quotes, code blocks |
+| Config Block Controls | ✅ | number, slider, boolean, select, string |
+| Value Sync | ✅ | Control changes auto-write to Lua file |
+| Jump to Source | ✅ | Click locate button to jump to Lua code |
+| Refresh Button | ✅ | Re-read Lua file to update display |
+| Change Highlight | ✅ | Highlight feedback after control changes |
 
-#### 控件类型
+#### Control Types
 
-| 类型 | 渲染效果 | 说明 |
-|------|---------|------|
-| `number` | 数字输入框 + ±按钮 | 支持 min/max/step |
-| `slider` | 滑动条 + 数值显示 | 支持 range/step |
-| `boolean` | 开关按钮 | 点击切换 true/false |
-| `select` | 下拉选择框 | 支持 options 选项列表 |
-| `string` | 文本输入框 | 通用字符串输入 |
+| Type | Render | Description |
+|------|--------|-------------|
+| `number` | Number input + ± buttons | Supports min/max/step |
+| `slider` | Slider + value display | Supports range/step |
+| `boolean` | Toggle switch | Click to toggle true/false |
+| `select` | Dropdown | Supports options list |
+| `string` | Text input | General string input |
 
 ---
 
-## 四、数据流与交互流程
+## 4. Data Flow & Interaction
 
-### 4.1 初始化流程
+### 4.1 Initialization Flow
 
 ```
 ┌──────────────┐     ┌───────────────┐     ┌─────────────┐     ┌──────────────┐
-│  策划打开     │     │  Extension    │     │  Lua Files  │     │   Webview    │
-│  config.md   │────▶│  解析 MD 文件  │────▶│  读取 & AST │────▶│  渲染 UI     │
+│  User opens  │     │  Extension    │     │  Lua Files  │     │   Webview    │
+│  config.md   │────▶│  Parse MD     │────▶│  Read & AST │────▶│  Render UI   │
 └──────────────┘     └───────────────┘     └─────────────┘     └──────────────┘
                             │                      │
-                            │   提取配置块定义      │   获取当前值
+                            │   Extract configs    │   Get current values
                             ▼                      ▼
                      ┌─────────────────────────────────────┐
                      │  linkedBlocks: [                    │
@@ -334,11 +334,11 @@ export class LuaPatcher {
                      └─────────────────────────────────────┘
 ```
 
-### 4.2 值修改流程
+### 4.2 Value Modification Flow
 
 ```
 ┌──────────────┐                          ┌───────────────┐
-│  策划修改    │    postMessage           │   Extension   │
+│  User changes│    postMessage           │   Extension   │
 │  HP: 100→200 │  ────────────────────▶   │   Host        │
 └──────────────┘                          └───────┬───────┘
                                                   │
@@ -346,203 +346,164 @@ export class LuaPatcher {
         │
         ▼
 ┌───────────────────────────────────────────────────────────┐
-│  1. 读取 player_config.lua                                │
-│  2. AST 解析，定位 PlayerConfig.BaseStats.HP              │
-│  3. 获取 range: [156, 159]                               │
-│  4. 替换: code.slice(0,156) + "200" + code.slice(159)    │
-│  5. 写入文件                                              │
+│  1. Read player_config.lua                                │
+│  2. AST parse, locate PlayerConfig.BaseStats.HP           │
+│  3. Get range: [156, 159]                                │
+│  4. Replace: code.slice(0,156) + "200" + code.slice(159) │
+│  5. Write file                                            │
 └───────────────────────────────────────────────────────────┘
         │
         ▼
 ┌──────────────┐
-│ Lua 文件已   │
-│ 更新完成     │
+│ Lua file     │
+│ updated      │
 └──────────────┘
 ```
 
-### 4.3 反向同步流程（Lua → Webview）
+### 4.3 Reverse Sync Flow (Lua → Webview)
 
 ```
 ┌───────────────┐     ┌──────────────────┐     ┌─────────────┐
-│  程序员修改   │     │  FileWatcher     │     │  Webview    │
-│  Lua 文件     │────▶│  检测到变化       │────▶│  更新显示   │
+│  Programmer   │     │  FileWatcher     │     │  Webview    │
+│  edits Lua    │────▶│  Detect change   │────▶│  Update UI  │
 └───────────────┘     └──────────────────┘     └─────────────┘
                               │
-                              │ 重新解析 AST
-                              │ 提取新值
+                              │ Re-parse AST
+                              │ Extract new values
                               │ postMessage
                               ▼
                        ┌─────────────┐
                        │ HP: 200→300 │
-                       │ (自动刷新)   │
+                       │ (auto-refresh)│
                        └─────────────┘
 ```
 
 ---
 
-## 五、插件配置项
+## 5. Extension Settings
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|-------|------|--------|------|
-| `intelligentMarkdown.autoSave` | boolean | `true` | 自动保存对 Lua 文件的修改 |
-| `intelligentMarkdown.showInlineValues` | boolean | `true` | 在编辑器中显示内联值 |
-| `intelligentMarkdown.autoOpenPreview` | boolean | `false` | 打开 Markdown 时自动显示预览 |
-| `intelligentMarkdown.autoOpenPreviewPattern` | string | `**/*.config.md` | 自动预览的文件匹配模式 |
-| `intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig` | boolean | `true` | 仅当文件包含 lua-config 块时才自动预览 |
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `intelligentMarkdown.autoSave` | boolean | `true` | Auto-save Lua file changes |
+| `intelligentMarkdown.showInlineValues` | boolean | `true` | Show inline values in editor |
+| `intelligentMarkdown.autoOpenPreview` | boolean | `false` | Auto-open preview for Markdown |
+| `intelligentMarkdown.autoOpenPreviewPattern` | string | `**/*.config.md` | Glob pattern for auto-preview |
+| `intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig` | boolean | `true` | Only auto-preview if file contains lua-config blocks |
 
-### 自动预览配置示例
+### Auto-preview Configuration Example
 
 ```json
 {
-  // 启用自动预览
+  // Enable auto-preview
   "intelligentMarkdown.autoOpenPreview": true,
   
-  // 匹配所有 Markdown 文件
+  // Match all Markdown files
   "intelligentMarkdown.autoOpenPreviewPattern": "**/*.md",
   
-  // 仅当包含 lua-config 块时才自动打开
+  // Only auto-open if contains lua-config blocks
   "intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig": true
 }
 ```
 
 ---
 
-## 六、开发路线图
+## 6. Development Roadmap
 
-### 第一阶段：MVP 原型 ✅
+### Phase 1: MVP Prototype ✅
 
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| 项目搭建 | ✅ | VS Code 插件项目结构 |
-| Lua 解析器 | ✅ | AST 解析和路径定位 |
-| 配置块解析 | ✅ | lua-config 代码块解析 |
-| 文档链接 | ✅ | 点击跳转到 Lua 源码 |
-| 悬停提示 | ✅ | 显示变量当前值 |
-| 内联值显示 | ✅ | 编辑器中显示值 |
+| Task | Status | Description |
+|------|--------|-------------|
+| Project Setup | ✅ | VS Code extension project structure |
+| Lua Parser | ✅ | AST parsing and path location |
+| Config Block Parser | ✅ | lua-config code block parsing |
+| Document Links | ✅ | Click to jump to Lua source |
+| Hover Tooltips | ✅ | Display current variable value |
+| Inline Values | ✅ | Show values in editor |
 
-### 第二阶段：Webview 编辑器 ✅
+### Phase 2: Webview Editor ✅
 
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| Webview 基础 | ✅ | 预览面板框架 |
-| Markdown 渲染 | ✅ | 文档内容渲染 |
-| 配置块控件 | ✅ | 5 种控件类型 |
-| 数据展示 | ✅ | 显示 Lua 当前值 |
+| Task | Status | Description |
+|------|--------|-------------|
+| Webview Basics | ✅ | Preview panel framework |
+| Markdown Rendering | ✅ | Document content rendering |
+| Config Controls | ✅ | 5 control types |
+| Data Display | ✅ | Show Lua current values |
 
-### 第三阶段：双向绑定 ✅
+### Phase 3: Two-way Binding ✅
 
-| 任务 | 状态 | 说明 |
-|------|------|------|
-| 值写入 | ✅ | 修改 UI 后写入 Lua |
-| 文件监听 | ✅ | Lua 变化时更新 UI |
-| 自动预览 | ✅ | 可配置自动打开预览 |
+| Task | Status | Description |
+|------|--------|-------------|
+| Value Write-back | ✅ | Write to Lua after UI changes |
+| File Watching | ✅ | Update UI when Lua changes |
+| Auto-preview | ✅ | Configurable auto-open preview |
 
-### 第四阶段：高级功能 🔄
+### Phase 4: Advanced Features 🔄
 
-| 功能 | 优先级 | 状态 |
-|------|--------|------|
-| 类型校验 | 高 | ⬜ |
-| 智能补全 | 中 | ⬜ |
-| 数组编辑 | 中 | ⬜ |
-| Table 预览 | 低 | ⬜ |
-| 颜色选择器 | 低 | ⬜ |
-| 批量操作 | 低 | ⬜ |
-
----
-
-## 七、技术栈总结
-
-| 层级 | 技术选型 | 说明 |
-|------|----------|------|
-| **Extension** | TypeScript | VS Code 插件开发语言 |
-| **AST 解析** | luaparse | Lua 语法解析 |
-| **构建工具** | Webpack 5 | 打包 Extension |
-| **测试** | Vitest | 单元测试框架 |
-| **Webview** | 原生 HTML/CSS/JS | 预览界面 |
+| Feature | Priority | Status |
+|---------|----------|--------|
+| Type Validation | High | ⬜ |
+| Auto-complete | Medium | ⬜ |
+| Array Editing | Medium | ⬜ |
+| Table Preview | Low | ⬜ |
+| Color Picker | Low | ⬜ |
+| Batch Operations | Low | ⬜ |
 
 ---
 
-## 八、关键难点与解决方案
+## 7. Tech Stack Summary
 
-### 难点 1：复杂的 Lua Table 嵌套定位
+| Layer | Technology | Description |
+|-------|------------|-------------|
+| **Extension** | TypeScript | VS Code extension development |
+| **AST Parsing** | luaparse | Lua syntax parsing |
+| **Build Tool** | Webpack 5 | Bundle extension |
+| **Testing** | Vitest | Unit test framework |
+| **Webview** | Native HTML/CSS/JS | Preview interface |
 
-**问题**：Lua 的 Table 可以任意嵌套，如何准确定位？
+---
 
-**解决方案**：递归遍历 AST，支持点号分隔的路径表达式。
+## 8. Key Challenges & Solutions
 
-### 难点 2：保持 Lua 文件格式和注释
+### Challenge 1: Complex Lua Table Nesting
 
-**问题**：直接重新生成 Lua 代码会丢失注释和格式。
+**Problem**: Lua Tables can be arbitrarily nested, how to accurately locate?
 
-**解决方案**：只替换值的部分，使用 range 精准定位。
+**Solution**: Recursively traverse AST, support dot-separated path expressions.
+
+### Challenge 2: Preserve Lua File Format and Comments
+
+**Problem**: Directly regenerating Lua code would lose comments and formatting.
+
+**Solution**: Only replace the value portion, use range for precise location.
 
 ```typescript
-// 只替换值，保留前后所有内容
+// Only replace value, preserve all surrounding content
 const newCode = code.slice(0, range[0]) + newValue + code.slice(range[1]);
 ```
 
-### 难点 3：Markdown 中 HTML 被转义
+### Challenge 3: HTML Escaped in Markdown
 
-**问题**：渲染配置块控件时，HTML 被 Markdown 转换器转义。
+**Problem**: Config block control HTML gets escaped by Markdown converter.
 
-**解决方案**：使用占位符策略：
-1. 先用占位符替换配置块
-2. 进行 Markdown 转换
-3. 最后将占位符替换为 HTML 控件
-
----
-
-## 九、示例场景
-
-### Webview 渲染效果
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  # 玩家属性配置文档                                          │
-│                                                             │
-│  本文档用于配置玩家的基础属性，修改后会自动同步到 Lua 代码。     │
-│                                                             │
-│  ## 基础属性                                                │
-│                                                             │
-│  ### 生命值                                                 │
-│  ┌─────────────────────────────────────────┐               │
-│  │ 📍 基础生命值                           │               │
-│  │ ┌────┐ ┌──────────┐ ┌────┐             │               │
-│  │ │ −  │ │   1000   │ │ +  │             │               │
-│  │ └────┘ └──────────┘ └────┘             │               │
-│  │ 范围: 100 ~ 10000   步进: 100           │               │
-│  └─────────────────────────────────────────┘               │
-│                                                             │
-│  ### 移动速度                                               │
-│  ┌─────────────────────────────────────────┐               │
-│  │ 📍 基础移动速度                         │               │
-│  │ ────────●─────────────────── 200 单位/秒 │               │
-│  │ 100                           500       │               │
-│  └─────────────────────────────────────────┘               │
-│                                                             │
-│  ### 新手引导                                               │
-│  ┌─────────────────────────────────────────┐               │
-│  │ 📍 显示新手引导                         │               │
-│  │ 🟢 ON                                   │               │
-│  └─────────────────────────────────────────┘               │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+**Solution**: Placeholder strategy:
+1. Replace config blocks with placeholders first
+2. Perform Markdown conversion
+3. Finally replace placeholders with HTML controls
 
 ---
 
-## 十、后续扩展方向
+## 9. Future Extension Directions
 
-1. **多语言支持**：扩展到 JSON、YAML、TOML 等配置格式
-2. **团队协作**：集成 Git 变更追踪
-3. **版本对比**：可视化对比不同版本的配置差异
-4. **模板系统**：预设常用的配置模板
-5. **权限控制**：某些关键配置设为只读
-6. **导出功能**：将 Markdown 导出为 PDF/HTML 文档
+1. **Multi-language Support**: Extend to JSON, YAML, TOML config formats
+2. **Team Collaboration**: Integrate Git change tracking
+3. **Version Comparison**: Visual diff between config versions
+4. **Template System**: Preset common config templates
+5. **Permission Control**: Set certain critical configs as read-only
+6. **Export Feature**: Export Markdown to PDF/HTML documents
 
 ---
 
-## 十一、参考资源
+## 10. References
 
 - [VS Code Extension API](https://code.visualstudio.com/api)
 - [VS Code Webview API](https://code.visualstudio.com/api/extension-guides/webview)
@@ -551,5 +512,5 @@ const newCode = code.slice(0, range[0]) + newValue + code.slice(range[1]);
 
 ---
 
-*文档版本：v2.0*
-*最后更新：2026-02*
+*Document Version: v2.0*
+*Last Updated: 2026-02*

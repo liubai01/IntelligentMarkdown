@@ -5,11 +5,11 @@
 PlayerConfig = {
     -- 基础属性
     BaseStats = {
-        HP = 1600,      -- 基础生命值
+        HP = 2900,      -- 基础生命值
         MP = 500,       -- 基础魔法值
         Attack = 375,   -- 基础攻击力
         Defense = 50,   -- 基础防御力
-        MoveSpeed = 200 -- 移动速度
+        MoveSpeed = 210 -- 移动速度
     },
     
     -- 技能配置

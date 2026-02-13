@@ -1,15 +1,33 @@
 {
   "name": "intelligent-markdown",
   "displayName": "Intelligent Markdown for Lua",
-  "description": "基于智能 Markdown 的 Lua 变量双向绑定框架",
+  "description": "Two-way binding between Markdown documents and Lua configuration files. Edit Lua configs visually in Markdown with real-time sync.",
   "version": "0.2.0",
-  "publisher": "intelligent-markdown",
+  "publisher": "liubai01",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liubai01/IntelligentMarkdown"
+  },
+  "homepage": "https://github.com/liubai01/IntelligentMarkdown#readme",
+  "bugs": {
+    "url": "https://github.com/liubai01/IntelligentMarkdown/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "lua",
+    "config",
+    "game development",
+    "visual editor",
+    "two-way binding"
+  ],
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
     "Other",
-    "Programming Languages"
+    "Programming Languages",
+    "Visualization"
   ],
   "activationEvents": [
     "onLanguage:markdown",
@@ -22,17 +40,17 @@
     "commands": [
       {
         "command": "intelligentMarkdown.showVariableValue",
-        "title": "显示 Lua 变量值",
+        "title": "Show Lua Variable Value",
         "category": "Intelligent Markdown"
       },
       {
         "command": "intelligentMarkdown.refreshBindings",
-        "title": "刷新 Lua 绑定",
+        "title": "Refresh Lua Bindings",
         "category": "Intelligent Markdown"
       },
       {
         "command": "intelligentMarkdown.openPreview",
-        "title": "打开配置预览",
+        "title": "Open Config Preview",
         "category": "Intelligent Markdown",
         "icon": "$(open-preview)"
       }
@@ -65,27 +83,27 @@
         "intelligentMarkdown.autoSave": {
           "type": "boolean",
           "default": true,
-          "description": "自动保存对 Lua 文件的修改"
+          "description": "Automatically save changes to Lua files"
         },
         "intelligentMarkdown.showInlineValues": {
           "type": "boolean",
           "default": true,
-          "description": "在编辑器中显示内联值"
+          "description": "Show inline values in the editor"
         },
         "intelligentMarkdown.autoOpenPreview": {
           "type": "boolean",
           "default": false,
-          "description": "打开 Markdown 文件时自动显示配置预览"
+          "description": "Automatically open config preview when opening Markdown files"
         },
         "intelligentMarkdown.autoOpenPreviewPattern": {
           "type": "string",
           "default": "**/*.config.md",
-          "description": "自动打开预览的文件匹配模式（glob 格式，如 **/*.config.md 或 **/config/**/*.md）"
+          "description": "Glob pattern for files that should auto-open preview (e.g., **/*.config.md or **/config/**/*.md)"
         },
         "intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig": {
           "type": "boolean",
           "default": true,
-          "description": "仅当 Markdown 文件包含 lua-config 代码块时才自动打开预览"
+          "description": "Only auto-open preview if Markdown file contains lua-config blocks"
         }
       }
     }
