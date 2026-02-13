@@ -4,7 +4,7 @@
 ItemsConfig = {
     -- 武器列表
     Weapons = {
-        { id = 1001, name = "木剑", attack = 10, price = 50, stackable = false },
+        { id = 1001, name = "木剑", attack = 10, price = 50, stackable = true },
         { id = 1002, name = "铁剑", attack = 25, price = 200, stackable = true },
         { id = 1003, name = "钢剑", attack = 45, price = 500, stackable = true },
         { id = 1004, name = "神圣之剑", attack = 100, price = 2000, stackable = false }
