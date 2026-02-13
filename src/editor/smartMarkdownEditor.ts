@@ -234,10 +234,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const blockId = this.generateBlockId(block);
 
     let inputHtml = '';
-    let valueDisplay = '';
 
     if (block.linkStatus === 'ok') {
-      valueDisplay = this.formatValue(block.currentValue);
 
       switch (block.type) {
         case 'number':
@@ -398,7 +396,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     let blockquoteLines: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
+      const line = lines[i];
 
       // 跳过占位符周围的空行
       if (line.trim() === '' && 
@@ -496,8 +494,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
    * 格式化值
    */
   private formatValue(value: any): string {
-    if (value === null || value === undefined) return 'nil';
-    if (typeof value === 'object') return JSON.stringify(value);
+    if (value === null || value === undefined) {
+      return 'nil';
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
     return String(value);
   }
 

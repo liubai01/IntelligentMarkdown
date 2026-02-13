@@ -9,16 +9,12 @@ import { ConfigBlock, ParsedConfigBlock, ConfigBlockParseResult, ConfigType } fr
 /** lua-config 代码块的正则表达式 */
 const CONFIG_BLOCK_REGEX = /```lua-config\s*\n([\s\S]*?)```/g;
 
-/** 单行配置的正则 */
-const LINE_REGEX = /^(\w+):\s*(.+)$/;
-
 export class ConfigBlockParser {
   /**
    * 从 Markdown 文本中提取所有配置块
    */
   parseMarkdown(markdownText: string): ParsedConfigBlock[] {
     const blocks: ParsedConfigBlock[] = [];
-    const lines = markdownText.split('\n');
 
     let match;
     CONFIG_BLOCK_REGEX.lastIndex = 0;

@@ -137,7 +137,6 @@ async function handleAutoOpenPreview(
 
   // 检查文件匹配模式
   const pattern = config.get<string>('autoOpenPreviewPattern', '**/*.config.md');
-  const relativePath = vscode.workspace.asRelativePath(document.uri);
   
   // 使用简单的 glob 匹配
   if (!matchGlobPattern(document.uri.fsPath, pattern)) {

@@ -144,7 +144,7 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
    */
   resolveDocumentLink(
     link: vscode.DocumentLink,
-    token: vscode.CancellationToken
+    _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.DocumentLink> {
     return link;
   }
