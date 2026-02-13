@@ -388,25 +388,101 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
   /**
    * 简单的 Markdown 转 HTML
+   * 更紧凑的排版，避免过多空行
    */
   private simpleMarkdownToHtml(text: string): string {
-    return text
+    // 将文本按行分割处理
+    const lines = text.split('\n');
+    const result: string[] = [];
+    let inBlockquote = false;
+    let blockquoteLines: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+
+      // 跳过占位符周围的空行
+      if (line.trim() === '' && 
+          (result.length > 0 && result[result.length - 1].includes('__CONFIG_BLOCK_PLACEHOLDER_'))) {
+        continue;
+      }
+      if (line.trim() === '' && 
+          i + 1 < lines.length && lines[i + 1].includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+        continue;
+      }
+
+      // 处理引用块（可能跨多行）
+      if (line.startsWith('> ')) {
+        if (!inBlockquote) {
+          inBlockquote = true;
+          blockquoteLines = [];
+        }
+        blockquoteLines.push(line.slice(2));
+        continue;
+      } else if (inBlockquote) {
+        // 结束引用块
+        result.push(`<blockquote>${blockquoteLines.join('<br>')}</blockquote>`);
+        inBlockquote = false;
+        blockquoteLines = [];
+      }
+
       // 标题
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      // 引用
-      .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+      if (line.startsWith('### ')) {
+        result.push(`<h3>${this.processInlineMarkdown(line.slice(4))}</h3>`);
+        continue;
+      }
+      if (line.startsWith('## ')) {
+        result.push(`<h2>${this.processInlineMarkdown(line.slice(3))}</h2>`);
+        continue;
+      }
+      if (line.startsWith('# ')) {
+        result.push(`<h1>${this.processInlineMarkdown(line.slice(2))}</h1>`);
+        continue;
+      }
+
+      // 占位符直接输出
+      if (line.includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+        result.push(line);
+        continue;
+      }
+
+      // 空行只在必要时添加段落分隔
+      if (line.trim() === '') {
+        // 只有当上一行不是块级元素时才添加空行
+        const lastLine = result[result.length - 1] || '';
+        if (lastLine && 
+            !lastLine.endsWith('</h1>') && 
+            !lastLine.endsWith('</h2>') && 
+            !lastLine.endsWith('</h3>') && 
+            !lastLine.endsWith('</blockquote>') &&
+            !lastLine.includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+          result.push('<br>');
+        }
+        continue;
+      }
+
+      // 普通段落
+      result.push(`<p>${this.processInlineMarkdown(line)}</p>`);
+    }
+
+    // 处理末尾的引用块
+    if (inBlockquote && blockquoteLines.length > 0) {
+      result.push(`<blockquote>${blockquoteLines.join('<br>')}</blockquote>`);
+    }
+
+    return result.join('\n');
+  }
+
+  /**
+   * 处理行内 Markdown 语法
+   */
+  private processInlineMarkdown(text: string): string {
+    return text
       // 粗体
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       // 斜体
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       // 代码
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // 段落
-      .replace(/\n\n/g, '</p><p>')
-      // 换行
-      .replace(/\n/g, '<br>');
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
   }
 
   /**
@@ -438,187 +514,257 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 获取样式
+   * 获取样式 - 基于 GitHub Markdown 风格
    */
   private getStyles(): string {
     return `
+      /* ========== VS Code 变量 ========== */
       :root {
-        --bg-color: var(--vscode-editor-background);
-        --fg-color: var(--vscode-editor-foreground);
-        --border-color: var(--vscode-panel-border);
+        --color-fg-default: var(--vscode-editor-foreground);
+        --color-fg-muted: var(--vscode-descriptionForeground, #656d76);
+        --color-canvas-default: var(--vscode-editor-background);
+        --color-canvas-subtle: var(--vscode-editorWidget-background, rgba(128,128,128,0.05));
+        --color-border-default: var(--vscode-panel-border, rgba(128,128,128,0.2));
+        --color-border-muted: var(--vscode-editorWidget-border, rgba(128,128,128,0.15));
+        --color-accent: var(--vscode-focusBorder, #0969da);
+        --color-success: #1a7f37;
+        --color-danger: #cf222e;
         --input-bg: var(--vscode-input-background);
         --input-fg: var(--vscode-input-foreground);
-        --input-border: var(--vscode-input-border);
+        --input-border: var(--vscode-input-border, rgba(128,128,128,0.3));
         --button-bg: var(--vscode-button-background);
         --button-fg: var(--vscode-button-foreground);
-        --accent-color: var(--vscode-focusBorder);
-        --success-color: #4caf50;
-        --error-color: #f44336;
       }
 
-      * {
+      /* ========== 基础样式 (GitHub Markdown 风格) ========== */
+      *, *::before, *::after {
         box-sizing: border-box;
       }
 
       body {
-        font-family: var(--vscode-font-family);
-        font-size: var(--vscode-font-size);
-        color: var(--fg-color);
-        background: var(--bg-color);
-        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--color-fg-default);
+        background: var(--color-canvas-default);
         margin: 0;
-        line-height: 1.6;
+        padding: 0;
+        word-wrap: break-word;
       }
 
       .container {
-        max-width: 900px;
+        max-width: 980px;
         margin: 0 auto;
-        padding: 20px;
+        padding: 16px 32px 32px;
       }
 
+      /* ========== 工具栏 ========== */
       .toolbar {
         position: sticky;
         top: 0;
-        background: var(--bg-color);
-        padding: 10px 0;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 20px;
+        background: var(--color-canvas-default);
+        padding: 8px 0;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--color-border-muted);
         z-index: 100;
+        display: flex;
+        gap: 8px;
       }
 
       .toolbar button {
         background: var(--button-bg);
         color: var(--button-fg);
         border: none;
-        padding: 6px 12px;
-        border-radius: 4px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
         cursor: pointer;
-        font-size: 13px;
+        transition: opacity 0.1s;
       }
 
       .toolbar button:hover {
-        opacity: 0.9;
+        opacity: 0.85;
       }
 
-      h1, h2, h3 {
-        margin-top: 24px;
-        margin-bottom: 16px;
+      /* ========== 排版 (VS Code Markdown 风格 - 更紧凑) ========== */
+      .content { line-height: 1.6; }
+      .content > p:first-child { margin-top: 0; }
+      .content > br:first-child { display: none; }
+
+      h1, h2, h3, h4, h5, h6 {
+        margin-top: 16px;
+        margin-bottom: 8px;
         font-weight: 600;
+        line-height: 1.3;
       }
 
-      h1 { font-size: 2em; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
-      h2 { font-size: 1.5em; }
-      h3 { font-size: 1.25em; }
+      h1 { 
+        font-size: 1.8em; 
+        padding-bottom: 0.2em;
+        border-bottom: 1px solid var(--color-border-muted);
+        margin-top: 0;
+      }
+
+      h2 { 
+        font-size: 1.4em; 
+        padding-bottom: 0.2em;
+        border-bottom: 1px solid var(--color-border-muted);
+      }
+
+      h3 { font-size: 1.17em; margin-top: 12px; }
+      h4 { font-size: 1em; margin-top: 10px; }
+
+      p { 
+        margin-top: 0; 
+        margin-bottom: 8px; 
+        line-height: 1.5;
+      }
+
+      br { 
+        display: block;
+        content: "";
+        margin-top: 4px;
+      }
 
       blockquote {
-        margin: 16px 0;
-        padding: 10px 20px;
-        border-left: 4px solid var(--accent-color);
-        background: rgba(128, 128, 128, 0.1);
-        border-radius: 0 4px 4px 0;
+        margin: 8px 0;
+        padding: 2px 12px;
+        color: var(--color-fg-muted);
+        border-left: 3px solid var(--color-border-default);
+      }
+
+      blockquote p {
+        margin: 0;
       }
 
       code {
-        background: rgba(128, 128, 128, 0.2);
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-family: var(--vscode-editor-font-family);
+        padding: 0.2em 0.4em;
+        margin: 0;
+        font-size: 85%;
+        white-space: break-spaces;
+        background-color: var(--color-canvas-subtle);
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       }
 
-      /* 配置块样式 */
+      strong { font-weight: 600; }
+      em { font-style: italic; }
+
+      hr {
+        height: 0.25em;
+        padding: 0;
+        margin: 24px 0;
+        background-color: var(--color-border-muted);
+        border: 0;
+      }
+
+      /* ========== 配置块样式 ========== */
       .config-block {
-        background: var(--input-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 16px;
-        margin: 16px 0;
-        transition: all 0.2s;
+        position: relative;
+        background: var(--color-canvas-subtle);
+        border: 1px solid var(--color-border-muted);
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 8px 0;
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
 
       .config-block:hover {
-        border-color: var(--accent-color);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-color: var(--color-accent);
       }
 
       .config-block.status-error {
-        border-color: var(--error-color);
-        background: rgba(244, 67, 54, 0.05);
+        border-color: var(--color-danger);
+        background: rgba(207, 34, 46, 0.04);
       }
 
       .config-header {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-bottom: 12px;
-        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 6px;
       }
 
-      .status-icon {
-        font-size: 16px;
-      }
+      .status-icon { font-size: 14px; line-height: 1; }
 
       .config-label {
         font-weight: 600;
-        font-size: 15px;
+        font-size: 14px;
+        color: var(--color-fg-default);
       }
 
       .config-key {
-        font-family: var(--vscode-editor-font-family);
-        font-size: 12px;
-        color: rgba(128, 128, 128, 0.8);
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: var(--color-fg-muted);
         background: rgba(128, 128, 128, 0.1);
-        padding: 2px 8px;
+        padding: 2px 6px;
         border-radius: 4px;
+        margin-left: auto;
       }
 
       .goto-btn {
         background: transparent;
         border: none;
         cursor: pointer;
-        padding: 4px;
+        padding: 2px 4px;
         border-radius: 4px;
-        opacity: 0.6;
-        transition: opacity 0.2s;
+        opacity: 0.5;
+        font-size: 12px;
+        transition: opacity 0.15s, background 0.15s;
       }
 
       .goto-btn:hover {
         opacity: 1;
-        background: rgba(128, 128, 128, 0.2);
+        background: rgba(128, 128, 128, 0.15);
       }
 
       .config-input {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        flex-wrap: wrap;
       }
 
       .config-unit {
-        font-size: 13px;
-        color: rgba(128, 128, 128, 0.8);
-        margin-left: 8px;
+        font-size: 12px;
+        color: var(--color-fg-muted);
       }
 
       .error-message {
-        color: var(--error-color);
-        font-size: 13px;
+        color: var(--color-danger);
+        font-size: 12px;
       }
 
-      /* 数字输入 */
+      .range-hint {
+        font-size: 11px;
+        color: var(--color-fg-muted);
+      }
+
+      /* ========== 数字输入控件 ========== */
       .number-input-wrapper {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 0;
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--input-bg);
+      }
+
+      .number-input-wrapper:focus-within {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
       .number-input {
-        width: 120px;
-        padding: 8px 12px;
-        border: 1px solid var(--input-border);
-        border-radius: 0;
-        background: var(--input-bg);
+        width: 80px;
+        padding: 4px 8px;
+        border: none;
+        background: transparent;
         color: var(--input-fg);
-        font-size: 16px;
-        font-weight: 600;
+        font-size: 13px;
+        font-weight: 500;
         text-align: center;
         -moz-appearance: textfield;
       }
@@ -629,61 +775,45 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         margin: 0;
       }
 
-      .number-input:focus {
-        outline: none;
-        border-color: var(--accent-color);
-      }
+      .number-input:focus { outline: none; }
 
       .num-btn {
-        width: 36px;
-        height: 36px;
-        border: 1px solid var(--input-border);
-        background: var(--button-bg);
-        color: var(--button-fg);
-        font-size: 18px;
-        font-weight: bold;
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: var(--color-fg-muted);
+        font-size: 16px;
+        font-weight: 500;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.2s;
-      }
-
-      .num-btn.minus {
-        border-radius: 6px 0 0 6px;
-        border-right: none;
-      }
-
-      .num-btn.plus {
-        border-radius: 0 6px 6px 0;
-        border-left: none;
+        transition: background 0.1s, color 0.1s;
       }
 
       .num-btn:hover {
-        background: var(--accent-color);
+        background: rgba(128, 128, 128, 0.15);
+        color: var(--color-fg-default);
       }
 
-      .num-btn:active {
-        transform: scale(0.95);
-      }
+      .num-btn:active { background: rgba(128, 128, 128, 0.25); }
 
-      .range-hint {
-        font-size: 12px;
-        color: rgba(128, 128, 128, 0.7);
-        margin-left: 12px;
-      }
+      .num-btn.minus { border-right: 1px solid var(--input-border); }
+      .num-btn.plus { border-left: 1px solid var(--input-border); }
 
-      /* 滑动条 */
+      /* ========== 滑动条控件 ========== */
       .slider-wrapper {
         flex: 1;
-        max-width: 400px;
+        max-width: 280px;
+        min-width: 180px;
       }
 
       .slider-input {
         width: 100%;
-        height: 8px;
-        border-radius: 4px;
-        background: rgba(128, 128, 128, 0.3);
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(128, 128, 128, 0.2);
         outline: none;
         -webkit-appearance: none;
         cursor: pointer;
@@ -691,123 +821,137 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       .slider-input::-webkit-slider-thumb {
         -webkit-appearance: none;
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
         border-radius: 50%;
-        background: var(--accent-color);
+        background: var(--color-accent);
         cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        transition: transform 0.2s;
+        border: 2px solid var(--color-canvas-default);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        transition: transform 0.1s;
       }
 
       .slider-input::-webkit-slider-thumb:hover {
-        transform: scale(1.1);
+        transform: scale(1.15);
+      }
+
+      .slider-input::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--color-accent);
+        cursor: pointer;
+        border: 2px solid var(--color-canvas-default);
       }
 
       .slider-labels {
         display: flex;
         justify-content: space-between;
-        margin-top: 8px;
-        font-size: 12px;
-        color: rgba(128, 128, 128, 0.8);
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--color-fg-muted);
       }
 
       .slider-value {
         font-weight: 600;
-        font-size: 16px;
-        color: var(--accent-color);
-        min-width: 60px;
+        font-size: 13px;
+        color: var(--color-accent);
+        min-width: 50px;
         text-align: center;
       }
 
-      /* 开关 */
+      /* ========== 开关控件 ========== */
       .switch {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
         cursor: pointer;
+        user-select: none;
       }
 
-      .switch input {
-        display: none;
-      }
+      .switch input { display: none; }
 
       .switch-slider {
-        width: 50px;
-        height: 26px;
-        background: rgba(128, 128, 128, 0.4);
-        border-radius: 13px;
+        width: 40px;
+        height: 22px;
+        background: rgba(128, 128, 128, 0.3);
+        border-radius: 11px;
         position: relative;
-        transition: all 0.3s;
+        transition: background 0.2s;
       }
 
       .switch-slider::after {
         content: '';
         position: absolute;
-        width: 22px;
-        height: 22px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
         background: white;
         top: 2px;
         left: 2px;
-        transition: all 0.3s;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
       }
 
       .switch input:checked + .switch-slider {
-        background: var(--success-color);
+        background: var(--color-success);
       }
 
       .switch input:checked + .switch-slider::after {
-        left: 26px;
+        transform: translateX(18px);
       }
 
       .switch-label {
-        font-size: 14px;
+        font-size: 13px;
+        color: var(--color-fg-muted);
       }
 
-      /* 字符串输入 */
+      /* ========== 文本输入框 ========== */
       .string-input {
         flex: 1;
-        max-width: 400px;
-        padding: 8px 12px;
+        max-width: 300px;
+        padding: 4px 10px;
         border: 1px solid var(--input-border);
         border-radius: 6px;
         background: var(--input-bg);
         color: var(--input-fg);
-        font-size: 14px;
+        font-size: 13px;
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
 
       .string-input:focus {
         outline: none;
-        border-color: var(--accent-color);
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
-      /* 下拉选择 */
+      /* ========== 下拉选择框 ========== */
       .select-input {
-        min-width: 200px;
-        padding: 8px 12px;
+        min-width: 160px;
+        padding: 4px 10px;
         border: 1px solid var(--input-border);
         border-radius: 6px;
         background: var(--input-bg);
         color: var(--input-fg);
-        font-size: 14px;
+        font-size: 13px;
         cursor: pointer;
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
 
       .select-input:focus {
         outline: none;
-        border-color: var(--accent-color);
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
-      /* 动画 */
-      @keyframes highlight {
-        0% { background-color: rgba(76, 175, 80, 0.3); }
-        100% { background-color: transparent; }
+      /* ========== 更新动画 ========== */
+      @keyframes flash {
+        0% { background-color: rgba(26, 127, 55, 0.15); }
+        100% { background-color: var(--color-canvas-subtle); }
       }
 
       .config-block.updated {
-        animation: highlight 1s ease-out;
+        animation: flash 0.6s ease-out;
       }
     `;
   }
