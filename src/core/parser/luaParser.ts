@@ -41,7 +41,7 @@ export class LuaParser {
 
       // 如果只有一层，直接返回
       if (segments.length === 1) {
-        return { success: true, node: this.extractValueNode(currentNode) };
+        return { success: true, node: this.extractValueNode(currentNode), astNode: currentNode };
       }
 
       // 遍历嵌套路径
@@ -57,7 +57,7 @@ export class LuaParser {
         currentNode = nextNode;
       }
 
-      return { success: true, node: this.extractValueNode(currentNode) };
+      return { success: true, node: this.extractValueNode(currentNode), astNode: currentNode };
     } catch (error) {
       return {
         success: false,

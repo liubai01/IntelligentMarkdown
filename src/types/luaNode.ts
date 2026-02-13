@@ -37,6 +37,8 @@ export interface LuaParseResult {
   success: boolean;
   /** 找到的节点 */
   node?: LuaValueNode;
+  /** 原始 AST 节点 */
+  astNode?: any;
   /** 错误信息 */
   error?: string;
 }

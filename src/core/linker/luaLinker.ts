@@ -21,6 +21,8 @@ export interface LinkedConfigBlock extends ParsedConfigBlock {
       start: { line: number; column: number };
       end: { line: number; column: number };
     };
+    /** table 类型的详细数据（包含每个字段的 range） */
+    tableData?: Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }>;
   };
   /** 链接状态 */
   linkStatus: 'ok' | 'file-not-found' | 'key-not-found' | 'parse-error';
@@ -95,6 +97,15 @@ export class LuaLinker {
         range: result.node.range,
         loc: result.node.loc
       };
+
+      // 如果是 table 类型，提取详细的表格数组数据（需要原始 AST 节点）
+      if (block.type === 'table' && result.astNode && result.astNode.type === 'TableConstructorExpression') {
+        const tableData = parser.extractTableArray(result.astNode);
+        if (tableData) {
+          linkedBlock.luaNode.tableData = tableData;
+        }
+      }
+
       linkedBlock.linkStatus = 'ok';
 
     } catch (error) {

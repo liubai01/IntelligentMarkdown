@@ -166,13 +166,13 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const parser = new LuaParser(luaCode);
       const result = parser.findNodeByPath(message.key);
 
-      if (!result.success || !result.node) {
+      if (!result.success || !result.astNode) {
         vscode.window.showErrorMessage(`找不到变量: ${message.key}`);
         return;
       }
 
       // 提取表格数组
-      const tableData = parser.extractTableArray(result.node.value as any);
+      const tableData = parser.extractTableArray(result.astNode);
       
       if (!tableData || message.rowIndex >= tableData.length) {
         vscode.window.showErrorMessage(`无效的行索引: ${message.rowIndex}`);
@@ -471,16 +471,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       return `<span class="error-message">表格类型需要定义 columns</span>`;
     }
 
-    // 解析当前值为表格数据
-    const parser = new LuaParser(fs.readFileSync(block.absoluteFilePath, 'utf-8'));
-    const result = parser.findNodeByPath(block.key);
-    
-    if (!result.success || !result.node || !result.node.value) {
-      return `<span class="error-message">无法读取表格数据</span>`;
-    }
-
-    // 提取表格数组详细信息
-    const tableData = parser.extractTableArray(result.node.value as any);
+    // 使用已经链接好的表格数据
+    const tableData = block.luaNode?.tableData;
     
     if (!tableData || tableData.length === 0) {
       return `<div class="table-empty">暂无数据</div>`;
