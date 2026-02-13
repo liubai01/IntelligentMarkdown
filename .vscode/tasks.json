@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "never"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "webpack",
+        "severity": "error",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "ERROR in (.*)\\((\\d+),(\\d+)\\)",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "\\[webpack-cli\\] Compiler starting",
+          "endsPattern": "\\[webpack-cli\\] Compiler finished|webpack \\d+\\.\\d+\\.\\d+ compiled"
+        }
+      }
+    },
+    {
+      "type": "npm",
+      "script": "compile",
+      "problemMatcher": {
+        "owner": "webpack",
+        "severity": "error",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "ERROR in (.*)\\((\\d+),(\\d+)\\)",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      },
+      "presentation": {
+        "reveal": "silent"
+      },
+      "group": "build"
+    },
+    {
+      "type": "npm",
+      "script": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always"
+      },
+      "group": "test"
+    }
+  ]
+}
