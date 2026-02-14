@@ -1,23 +1,60 @@
-# Intelligent Markdown for Lua
+<p align="center">
+  <img src="images/banner.png" alt="config.md banner" width="800" />
+</p>
 
-[![CI](https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml/badge.svg)](https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml)
-[![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/liubai01.intelligent-markdown?style=flat-square&label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
-[![Visual Studio Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/liubai01.intelligent-markdown?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=liubai01.intelligent-markdown)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+<h1 align="center">config.md</h1>
 
-**Visually edit Lua configuration files through Markdown documents with real-time two-way sync.**
+<p align="center">
+  <strong>Manage configuration through Markdown — write docs, embed config blocks, edit visually.</strong>
+</p>
 
-Perfect for game developers, designers, and anyone who needs to edit Lua configs without touching code!
+<p align="center">
+  <a href="https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml"><img src="https://github.com/liubai01/IntelligentMarkdown/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=liubai01.config-md"><img src="https://img.shields.io/visual-studio-marketplace/v/liubai01.config-md?style=flat-square&label=VS%20Code%20Marketplace" alt="Version" /></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=liubai01.config-md"><img src="https://img.shields.io/visual-studio-marketplace/d/liubai01.config-md?style=flat-square" alt="Downloads" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="License: MIT" /></a>
+</p>
+
+---
+
+## 💡 What is config.md?
+
+**config.md** is a VS Code extension that lets you manage configuration files through Markdown documents. Write human-readable documentation with embedded config blocks — and get a visual editor for free.
+
+> 📌 Currently focused on **Lua** configuration. More languages coming soon.
+
+### The Idea
+
+Instead of editing raw config files, write a Markdown document that describes your configuration:
+
+````markdown
+# Game Settings
+
+## Player Health
+
+```lua-config
+file: ./game_config.lua
+key: GameConfig.Player.MaxHealth
+type: slider
+range: [50, 200]
+label: Maximum Health
+```
+````
+
+Open the preview panel, and you get an interactive visual editor — sliders, toggles, dropdowns — that syncs changes back to your Lua files in real-time.
 
 ---
 
 ## ✨ Features
 
-- 🎨 **Visual Config Editor** - Edit Lua values using sliders, toggles, dropdowns, and input fields
-- 🔄 **Two-way Binding** - Changes in the visual editor automatically sync to Lua files
-- 📝 **Markdown-based** - Document your configs with rich Markdown formatting
-- 🎯 **Jump to Source** - Click to navigate directly to the Lua code
-- ⚡ **Real-time Preview** - See changes instantly as you edit
+| Feature | Description |
+|---------|-------------|
+| 🎨 **Visual Editor** | Edit config values with sliders, toggles, dropdowns, input fields, and tables |
+| 🔄 **Two-way Sync** | Changes in the visual editor auto-sync to source Lua files |
+| 📝 **Markdown Native** | Your config docs *are* the config editor — document and edit in one place |
+| 🎯 **Jump to Source** | Click any value to navigate directly to the Lua code |
+| ⚡ **Real-time Preview** | See changes instantly as you type |
+| 📊 **Table Editing** | Batch-edit arrays of objects in a spreadsheet-like interface |
 
 ---
 
@@ -79,7 +116,7 @@ label: Game Difficulty
 
 ### 3. Open the Visual Preview
 
-Click the **preview icon** (📖) in the top-right corner, or press `Ctrl+Shift+P` → "Open Config Preview"
+Click the **preview icon** (📖) in the top-right corner, or press `Ctrl+Shift+P` → **"config.md: Open Config Preview"**
 
 ---
 
@@ -125,8 +162,6 @@ columns:                      # For table type (array of objects)
 
 ### Table Type Example
 
-Use `table` type to batch edit arrays of Lua objects in a spreadsheet-like interface:
-
 ````markdown
 ```lua-config
 file: ./items.lua
@@ -138,22 +173,21 @@ columns:
   - { key: "name", label: "Weapon Name", type: "string", width: "150px" }
   - { key: "attack", label: "Attack Power", type: "number", min: 1, max: 999, width: "120px" }
   - { key: "price", label: "Price", type: "number", min: 0, max: 99999, width: "100px" }
-  - { key: "rare", label: "Rarity", type: "select", width: "120px", 
+  - { key: "rare", label: "Rarity", type: "select", width: "120px",
       options: [{ value: "common", label: "Common" }, { value: "rare", label: "Rare" }] }
 ```
 ````
 
-**Supported column types**: `number`, `string`, `boolean`, `select`
-
 ---
 
-## ⚙️ Extension Settings
+## ⚙️ Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `autoSave` | `true` | Auto-save Lua files after changes |
-| `autoOpenPreview` | `false` | Auto-open preview for config files |
-| `autoOpenPreviewPattern` | `**/*.config.md` | Pattern for auto-preview |
+| `intelligentMarkdown.autoSave` | `true` | Auto-save Lua files after changes |
+| `intelligentMarkdown.autoOpenPreview` | `true` | Auto-open preview for config files |
+| `intelligentMarkdown.autoOpenPreviewPattern` | `**/*.config.md` | Glob pattern for auto-preview |
+| `intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig` | `true` | Only auto-open if file contains `lua-config` blocks |
 
 ### Recommended Configuration
 
@@ -249,10 +283,13 @@ label: Game Difficulty
 
 ---
 
-## 📚 Documentation
+## 🗺️ Roadmap
 
-- 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md) - Detailed usage instructions
-- 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/ARCHITECTURE.md) - Technical documentation
+- [x] Lua configuration support
+- [ ] YAML / JSON / TOML config support
+- [ ] Custom theme for visual editor
+- [ ] Export config snapshots
+- [ ] Config validation rules
 
 ---
 
@@ -274,7 +311,24 @@ npm run watch
 
 ---
 
+## 📚 Documentation
+
+- 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md) — Detailed usage instructions
+- 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/ARCHITECTURE.md) — Technical documentation
+
+---
+
 ## 📝 Changelog
+
+### v0.3.0
+
+- 🎨 Brand upgrade: renamed to **config.md**
+- 🖼️ New icon and marketplace banner
+- 🔧 Improved preview panel reuse (no more extra windows)
+
+### v0.2.2
+
+- 🔧 Reuse preview panel to avoid creating too many windows
 
 ### v0.2.1
 
@@ -304,4 +358,8 @@ MIT © [liubai01](https://github.com/liubai01)
 
 ---
 
-**[⭐ Star on GitHub](https://github.com/liubai01/IntelligentMarkdown)** | **[🐛 Report Issues](https://github.com/liubai01/IntelligentMarkdown/issues)** | **[📖 User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md)**
+<p align="center">
+  <a href="https://github.com/liubai01/IntelligentMarkdown"><strong>⭐ Star on GitHub</strong></a> · 
+  <a href="https://github.com/liubai01/IntelligentMarkdown/issues"><strong>🐛 Report Issues</strong></a> · 
+  <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md"><strong>📖 User Guide</strong></a>
+</p>

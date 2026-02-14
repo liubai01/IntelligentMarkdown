@@ -1,9 +1,10 @@
 {
-  "name": "intelligent-markdown",
-  "displayName": "Intelligent Markdown for Lua",
-  "description": "Two-way binding between Markdown documents and Lua configuration files. Edit Lua configs visually in Markdown with real-time sync.",
-  "version": "0.2.2",
+  "name": "config-md",
+  "displayName": "config.md",
+  "description": "Manage configuration through Markdown — visual config editor with embedded code blocks. Currently focused on Lua.",
+  "version": "0.3.0",
   "publisher": "liubai01",
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/liubai01/IntelligentMarkdown"
@@ -15,14 +16,20 @@
   "license": "MIT",
   "keywords": [
     "markdown",
-    "lua",
     "config",
-    "game development",
+    "lua",
+    "configuration management",
     "visual editor",
-    "two-way binding"
+    "code blocks",
+    "config.md",
+    "game development"
   ],
   "engines": {
     "vscode": "^1.74.0"
+  },
+  "galleryBanner": {
+    "color": "#0d2b3e",
+    "theme": "dark"
   },
   "categories": [
     "Other",
@@ -41,17 +48,17 @@
       {
         "command": "intelligentMarkdown.showVariableValue",
         "title": "Show Lua Variable Value",
-        "category": "Intelligent Markdown"
+        "category": "config.md"
       },
       {
         "command": "intelligentMarkdown.refreshBindings",
         "title": "Refresh Lua Bindings",
-        "category": "Intelligent Markdown"
+        "category": "config.md"
       },
       {
         "command": "intelligentMarkdown.openPreview",
         "title": "Open Config Preview",
-        "category": "Intelligent Markdown",
+        "category": "config.md",
         "icon": "$(open-preview)"
       }
     ],
@@ -78,7 +85,7 @@
       }
     ],
     "configuration": {
-      "title": "Intelligent Markdown",
+      "title": "config.md",
       "properties": {
         "intelligentMarkdown.autoSave": {
           "type": "boolean",
