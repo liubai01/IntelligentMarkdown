@@ -3,7 +3,7 @@
  */
 
 /** 支持的控件类型 */
-export type ConfigType = 'number' | 'slider' | 'string' | 'boolean' | 'select' | 'color' | 'array' | 'table';
+export type ConfigType = 'number' | 'slider' | 'string' | 'boolean' | 'select' | 'color' | 'array' | 'table' | 'code';
 
 /** 选项项 */
 export interface SelectOption {

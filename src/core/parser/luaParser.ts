@@ -301,6 +301,69 @@ export class LuaParser {
   }
 
   /**
+   * 查找函数声明（支持多种 Lua 函数声明模式）
+   * - 表字段: GameConfig = { onInit = function() ... end }
+   * - 独立声明: function GameConfig.onInit() ... end
+   * - 独立声明(冒号): function GameConfig:onInit() ... end
+   * - 赋值声明: GameConfig.onInit = function() ... end
+   */
+  findFunctionByFullPath(keyPath: string): LuaParseResult {
+    // 先尝试普通路径查找（处理表字段中的函数）
+    const normalResult = this.findNodeByPath(keyPath);
+    if (normalResult.success && normalResult.node && normalResult.node.type === 'function') {
+      return normalResult;
+    }
+
+    const targetPath = keyPath.split('.').join('.');
+
+    for (const statement of this.ast.body) {
+      // 模式: function A.B.C() ... end 或 function A:B() ... end
+      if (statement.type === 'FunctionDeclaration' && statement.identifier) {
+        const declPath = this.getMemberExpressionPath(statement.identifier);
+        if (declPath.join('.') === targetPath) {
+          return {
+            success: true,
+            node: this.extractValueNode(statement),
+            astNode: statement
+          };
+        }
+      }
+
+      // 模式: A.B.C = function() ... end
+      if (statement.type === 'AssignmentStatement') {
+        for (let i = 0; i < statement.variables.length; i++) {
+          const variable = statement.variables[i];
+          const varPath = this.getMemberExpressionPath(variable);
+          if (varPath.join('.') === targetPath &&
+              statement.init[i] &&
+              statement.init[i].type === 'FunctionDeclaration') {
+            return {
+              success: true,
+              node: this.extractValueNode(statement.init[i]),
+              astNode: statement.init[i]
+            };
+          }
+        }
+      }
+    }
+
+    return { success: false, error: `找不到函数: ${keyPath}` };
+  }
+
+  /**
+   * 从 MemberExpression 或 Identifier 节点提取路径
+   */
+  private getMemberExpressionPath(node: any): string[] {
+    if (node.type === 'Identifier') {
+      return [node.name];
+    }
+    if (node.type === 'MemberExpression') {
+      return [...this.getMemberExpressionPath(node.base), node.identifier.name];
+    }
+    return [];
+  }
+
+  /**
    * 获取所有顶级变量
    */
   getAllRootVariables(): string[] {

@@ -55,6 +55,7 @@ Open the preview panel, and you get an interactive visual editor — sliders, to
 | 🎯 **Jump to Source** | Click any value to navigate directly to the Lua code |
 | ⚡ **Real-time Preview** | See changes instantly as you type |
 | 📊 **Table Editing** | Batch-edit arrays of objects in a spreadsheet-like interface |
+| 💻 **Function Editor** | Edit Lua functions in VS Code's native editor — with full IntelliSense, go-to-definition, and staged save |
 
 ---
 
@@ -320,6 +321,11 @@ npm run watch
 ---
 
 ## 📝 Changelog
+
+### v0.3.1
+
+- 💻 New `code` type: edit Lua functions in VS Code's native editor with full language support
+- 🔧 Staged save workflow: edit in temp file, click "Apply" to write back to source
 
 ### v0.3.0
 

@@ -82,8 +82,10 @@ export class LuaLinker {
       // 获取或创建解析器
       const parser = await this.getParser(absolutePath);
 
-      // 查找变量
-      const result = parser.findNodeByPath(block.key);
+      // 根据类型选择查找方法
+      const result = block.type === 'code'
+        ? parser.findFunctionByFullPath(block.key)
+        : parser.findNodeByPath(block.key);
 
       if (!result.success || !result.node) {
         linkedBlock.linkStatus = 'key-not-found';
@@ -92,7 +94,10 @@ export class LuaLinker {
       }
 
       // 填充值和位置信息
-      linkedBlock.currentValue = result.node.value;
+      // code 类型使用 raw 源码文本，其他类型使用解析后的值
+      linkedBlock.currentValue = block.type === 'code'
+        ? (result.node.raw || '')
+        : result.node.value;
       linkedBlock.luaNode = {
         range: result.node.range,
         loc: result.node.loc

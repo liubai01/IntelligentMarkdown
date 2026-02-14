@@ -190,6 +190,37 @@ columns:
 
 ---
 
+### `code`
+
+Lua function editor — opens in VS Code's **native editor** with full language support (syntax highlighting, IntelliSense, go-to-definition, etc.). Changes are staged: click "Apply to Source" to write back.
+
+```lua-config
+file: ./game_config.lua
+key: GameConfig.onPlayerDeath
+type: code
+label: On Player Death
+```
+
+No additional parameters. The `key` should point to a Lua function value.
+
+**Supported function patterns:**
+
+| Pattern | Example |
+|---------|---------|
+| Table field | `GameConfig = { onInit = function() ... end }` |
+| Standalone declaration | `function GameConfig.onInit() ... end` |
+| Colon syntax | `function GameConfig:onInit() ... end` |
+| Assignment | `GameConfig.onInit = function() ... end` |
+
+**Workflow:**
+
+1. Preview panel shows the function source code (read-only)
+2. Click **"✏️ Edit in VS Code"** → opens a temp `.lua` file in VS Code's native editor
+3. Edit with full Lua language support (syntax, IntelliSense, jump-to-definition)
+4. Click **"💾 Apply to Source"** in the preview panel → changes are written back to the original file
+
+---
+
 ### `color`
 
 > ⚠️ Declared but not yet implemented. Reserved for future use.
@@ -282,5 +313,16 @@ columns:
   - { key: "name", label: "Name", type: "string", width: "150px" }
   - { key: "price", label: "Price", type: "number", min: 0, max: 99999, width: "100px" }
   - { key: "enabled", label: "Active", type: "boolean", width: "80px" }
+```
+</details>
+
+<details>
+<summary><b>Function editor (code)</b></summary>
+
+```lua-config
+file: ./game_config.lua
+key: GameConfig.onPlayerDeath
+type: code
+label: On Player Death Handler
 ```
 </details>

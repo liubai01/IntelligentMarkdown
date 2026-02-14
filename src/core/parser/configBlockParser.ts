@@ -69,7 +69,7 @@ export class ConfigBlockParser {
       }
 
       // 验证类型
-      const validTypes: ConfigType[] = ['number', 'slider', 'string', 'boolean', 'select', 'color', 'array', 'table'];
+      const validTypes: ConfigType[] = ['number', 'slider', 'string', 'boolean', 'select', 'color', 'array', 'table', 'code'];
       if (!validTypes.includes(parsed.type)) {
         return { success: false, error: `无效的类型: ${parsed.type}` };
       }
