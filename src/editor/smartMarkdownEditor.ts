@@ -19,38 +19,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
 
-  /** 活跃的代码编辑会话：blockId → { tempPath, sourceFile, key } */
-  private activeEditSessions: Map<string, { tempPath: string; sourceFile: string; key: string }> = new Map();
-
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configParser = new ConfigBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
-  }
-
-  /**
-   * 获取/创建临时文件目录
-   */
-  private getTempDir(): string {
-    const tempDir = path.join(this.context.globalStorageUri.fsPath, 'code-edit');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    return tempDir;
-  }
-
-  /**
-   * 清理所有临时文件
-   */
-  private cleanupTempFiles(): void {
-    for (const [, session] of this.activeEditSessions) {
-      try {
-        if (fs.existsSync(session.tempPath)) {
-          fs.unlinkSync(session.tempPath);
-        }
-      } catch { /* ignore cleanup errors */ }
-    }
-    this.activeEditSessions.clear();
   }
 
   public async resolveCustomTextEditor(
@@ -78,9 +50,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           case 'updateTableCell':
             await this.handleUpdateTableCell(document, message);
             await this.updateWebview(document, webviewPanel.webview);
-            break;
-          case 'editCode':
-            await this.handleEditCode(document, message);
             break;
           case 'saveCode':
             await this.handleSaveCode(document, message);
@@ -115,7 +84,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     webviewPanel.onDidDispose(() => {
       changeSubscription.dispose();
       luaWatcher.dispose();
-      this.cleanupTempFiles();
     });
   }
 
@@ -573,34 +541,38 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染代码编辑控件
+   * 渲染代码编辑控件（原地编辑 textarea + 保存 + 跳转）
    */
   private renderCodeInput(block: LinkedConfigBlock, blockId: string): string {
     const functionSource = block.currentValue || '-- No function found';
     const escapedSource = this.escapeHtml(functionSource);
-    const hasActiveEdit = this.activeEditSessions.has(blockId);
+    const lineCount = functionSource.split('\n').length;
+    const rows = Math.max(6, Math.min(lineCount + 1, 30));
 
     return `
 <div class="code-wrapper">
   <div class="code-toolbar">
-    <button class="code-btn code-edit-btn" onclick="editCode('${blockId}')" title="Open in VS Code editor with full language support">
-      ✏️ Edit in VS Code
+    <button class="code-btn code-save-btn" onclick="saveCode('${blockId}')" title="Save changes to source file">
+      💾 Save
     </button>
-    <button class="code-btn code-apply-btn ${hasActiveEdit ? 'has-changes' : ''}" onclick="saveCode('${blockId}')" title="Apply edited code back to source file">
-      💾 Apply to Source
-    </button>
+    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="Jump to function in source file">📍 Jump to Source</button>` : ''}
   </div>
-  <pre class="code-display"><code>${escapedSource}</code></pre>
-  ${hasActiveEdit ? '<div class="code-edit-hint">⚠️ Unsaved edits in temp file — click "Apply to Source" to write back</div>' : ''}
+  <textarea
+    id="${blockId}"
+    class="code-textarea"
+    rows="${rows}"
+    spellcheck="false"
+    onkeydown="handleCodeKeydown(event, '${blockId}')"
+  >${escapedSource}</textarea>
 </div>`;
   }
 
   /**
-   * 处理代码编辑请求：创建临时文件并在 VS Code 原生编辑器中打开
+   * 处理代码保存：直接从 webview 接收编辑后的代码文本，写回源文件
    */
-  private async handleEditCode(
+  private async handleSaveCode(
     document: vscode.TextDocument,
-    message: { file: string; key: string; blockId: string }
+    message: { file: string; key: string; code: string }
   ): Promise<void> {
     try {
       const mdDir = path.dirname(document.uri.fsPath);
@@ -611,112 +583,31 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         return;
       }
 
-      // 解析 Lua 文件并查找函数
+      // 重新解析源文件以获取函数的当前范围
       const luaCode = fs.readFileSync(luaPath, 'utf-8');
       const parser = new LuaParser(luaCode);
       const result = parser.findFunctionByFullPath(message.key);
 
       if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(`找不到函数: ${message.key}`);
+        vscode.window.showErrorMessage(`在源文件中找不到函数 ${message.key}`);
         return;
       }
 
-      // 获取函数源码
-      const functionSource = result.node.raw || luaCode.substring(result.node.range[0], result.node.range[1]);
-
-      // 创建临时文件
-      const tempDir = this.getTempDir();
-      const safeKey = message.key.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const tempPath = path.join(tempDir, `${safeKey}.lua`);
-
-      fs.writeFileSync(tempPath, functionSource, 'utf-8');
-
-      // 记录编辑会话
-      this.activeEditSessions.set(message.blockId, {
-        tempPath,
-        sourceFile: luaPath,
-        key: message.key
-      });
-
-      // 在 VS Code 原生编辑器中打开临时文件
-      const tempDoc = await vscode.workspace.openTextDocument(tempPath);
-      await vscode.window.showTextDocument(tempDoc, vscode.ViewColumn.One);
-
-      vscode.window.showInformationMessage(
-        `正在编辑 ${message.key} — 编辑完成后在预览面板点击 "💾 Apply to Source" 应用更改`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `打开编辑器失败: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  /**
-   * 处理代码保存请求：读取临时文件内容并替换回源文件
-   */
-  private async handleSaveCode(
-    document: vscode.TextDocument,
-    message: { blockId: string }
-  ): Promise<void> {
-    try {
-      const session = this.activeEditSessions.get(message.blockId);
-      if (!session) {
-        vscode.window.showWarningMessage('没有活跃的编辑会话，请先点击 "Edit in VS Code"');
-        return;
-      }
-
-      // 确保临时文件已保存（如果在 VS Code 中打开且未保存）
-      for (const doc of vscode.workspace.textDocuments) {
-        if (doc.uri.fsPath === session.tempPath && doc.isDirty) {
-          await doc.save();
-        }
-      }
-
-      if (!fs.existsSync(session.tempPath)) {
-        vscode.window.showErrorMessage('临时文件不存在，编辑会话可能已过期');
-        this.activeEditSessions.delete(message.blockId);
-        return;
-      }
-
-      // 读取编辑后的代码
-      const newFunctionCode = fs.readFileSync(session.tempPath, 'utf-8');
-
-      // 重新解析源文件以获取函数的当前范围（防止源文件被其他途径修改导致范围偏移）
-      const luaCode = fs.readFileSync(session.sourceFile, 'utf-8');
-      const parser = new LuaParser(luaCode);
-      const result = parser.findFunctionByFullPath(session.key);
-
-      if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(`在源文件中找不到函数 ${session.key}，可能已被修改或删除`);
-        return;
-      }
-
-      // 精准替换：保留函数前后的所有内容
+      // 精准替换：只替换函数部分，保留前后所有内容
       const before = luaCode.substring(0, result.node.range[0]);
       const after = luaCode.substring(result.node.range[1]);
-      const newCode = before + newFunctionCode + after;
+      const newCode = before + message.code + after;
 
       // 写入源文件
-      fs.writeFileSync(session.sourceFile, newCode, 'utf-8');
+      fs.writeFileSync(luaPath, newCode, 'utf-8');
 
       // 清除缓存
-      this.luaLinker.clearCache(session.sourceFile);
+      this.luaLinker.clearCache(luaPath);
 
-      // 清理编辑会话
-      this.activeEditSessions.delete(message.blockId);
-
-      // 尝试清理临时文件
-      try {
-        if (fs.existsSync(session.tempPath)) {
-          fs.unlinkSync(session.tempPath);
-        }
-      } catch { /* ignore cleanup errors */ }
-
-      vscode.window.showInformationMessage(`已将更改应用到 ${session.key}`);
+      vscode.window.showInformationMessage(`已保存 ${message.key}`);
     } catch (error) {
       vscode.window.showErrorMessage(
-        `应用更改失败: ${error instanceof Error ? error.message : String(error)}`
+        `保存失败: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -1394,11 +1285,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       .code-toolbar {
         display: flex;
         gap: 8px;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
 
       .code-btn {
-        padding: 5px 12px;
+        padding: 4px 10px;
         border: 1px solid var(--input-border);
         border-radius: 6px;
         font-size: 12px;
@@ -1407,70 +1298,46 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         transition: all 0.15s;
       }
 
-      .code-edit-btn {
+      .code-save-btn {
         background: var(--button-bg);
         color: var(--button-fg);
         border-color: transparent;
       }
 
-      .code-edit-btn:hover {
-        opacity: 0.85;
-      }
+      .code-save-btn:hover { opacity: 0.85; }
 
-      .code-apply-btn {
+      .code-goto-btn {
         background: var(--color-canvas-subtle);
         color: var(--color-fg-default);
       }
 
-      .code-apply-btn:hover {
+      .code-goto-btn:hover {
         border-color: var(--color-accent);
         background: rgba(9, 105, 218, 0.08);
       }
 
-      .code-apply-btn.has-changes {
-        border-color: var(--color-success);
-        color: var(--color-success);
-        background: rgba(26, 127, 55, 0.08);
-        animation: pulse-border 2s infinite;
-      }
-
-      @keyframes pulse-border {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(26, 127, 55, 0.3); }
-        50% { box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
-      }
-
-      .code-display {
-        background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
-        border: 1px solid var(--color-border-muted);
+      .code-textarea {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--input-border);
         border-radius: 6px;
-        padding: 12px 16px;
-        margin: 0;
-        overflow-x: auto;
+        background: var(--vscode-textCodeBlock-background, var(--input-bg));
+        color: var(--input-fg);
         font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
         font-size: 12px;
         line-height: 1.6;
         tab-size: 4;
+        resize: vertical;
         white-space: pre;
-        color: var(--color-fg-default);
-        max-height: 400px;
-        overflow-y: auto;
+        overflow-wrap: normal;
+        overflow-x: auto;
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
 
-      .code-display code {
-        background: none;
-        padding: 0;
-        font-size: inherit;
-        border-radius: 0;
-      }
-
-      .code-edit-hint {
-        margin-top: 6px;
-        padding: 4px 10px;
-        font-size: 11px;
-        color: #e3b341;
-        background: rgba(227, 179, 65, 0.08);
-        border-left: 3px solid #e3b341;
-        border-radius: 0 4px 4px 0;
+      .code-textarea:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
       /* ========== 更新动画 ========== */
@@ -1626,22 +1493,41 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      function editCode(blockId) {
-        const data = blockData[blockId];
-        if (!data) return;
-        vscode.postMessage({
-          type: 'editCode',
-          blockId: blockId,
-          file: data.file,
-          key: data.key
-        });
-      }
-
       function saveCode(blockId) {
+        const textarea = document.getElementById(blockId);
+        const data = blockData[blockId];
+        if (!textarea || !data) return;
         vscode.postMessage({
           type: 'saveCode',
-          blockId: blockId
+          file: data.file,
+          key: data.key,
+          code: textarea.value
         });
+        // flash animation
+        const block = textarea.closest('.config-block');
+        if (block) {
+          block.classList.remove('updated');
+          void block.offsetWidth;
+          block.classList.add('updated');
+        }
+      }
+
+      function handleCodeKeydown(event, blockId) {
+        // Tab inserts tab character instead of moving focus
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          const ta = document.getElementById(blockId);
+          if (!ta) return;
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
+          ta.selectionStart = ta.selectionEnd = start + 4;
+        }
+        // Ctrl+S / Cmd+S saves
+        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+          event.preventDefault();
+          saveCode(blockId);
+        }
       }
 
       function gotoSource(file, line) {
