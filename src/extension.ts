@@ -15,8 +15,9 @@ import { SmartMarkdownEditorProvider } from './editor/smartMarkdownEditor';
 
 let decorationProvider: LuaConfigDecorationProvider | undefined;
 
-// 记录已打开预览的文件，避免重复打开
-const openedPreviews = new Set<string>();
+// 当前活动的预览面板（复用以避免创建过多窗口）
+let currentPreviewPanel: vscode.WebviewPanel | undefined;
+let currentPreviewDocUri: string | undefined;
 
 /**
  * 插件激活
@@ -122,11 +123,6 @@ async function handleAutoOpenPreview(
     return;
   }
 
-  // 避免重复打开
-  if (openedPreviews.has(document.uri.toString())) {
-    return;
-  }
-
   // 读取配置
   const config = vscode.workspace.getConfiguration('intelligentMarkdown');
   const autoOpenPreview = config.get<boolean>('autoOpenPreview', false);
@@ -153,8 +149,10 @@ async function handleAutoOpenPreview(
     }
   }
 
-  // 标记为已打开
-  openedPreviews.add(document.uri.toString());
+  // 如果当前面板已经在显示同一文档，跳过
+  if (currentPreviewPanel && currentPreviewDocUri === document.uri.toString()) {
+    return;
+  }
 
   // 延迟一下打开预览，让编辑器先完成加载
   setTimeout(() => {
@@ -202,17 +200,35 @@ function matchSimplePattern(str: string, pattern: string): boolean {
 }
 
 /**
- * 为指定文档打开预览
+ * 为指定文档打开预览（复用现有面板）
  */
 async function openPreviewForDocument(
   context: vscode.ExtensionContext,
   document: vscode.TextDocument
 ): Promise<void> {
-  // 创建 Webview 面板
+  const docUri = document.uri.toString();
+
+  // 如果当前面板已经在显示同一文档，直接 reveal 即可
+  if (currentPreviewPanel && currentPreviewDocUri === docUri) {
+    currentPreviewPanel.reveal(undefined, true);
+    return;
+  }
+
+  // 确定目标列：如果已有面板，复用其所在列；否则使用 Beside
+  let targetColumn = vscode.ViewColumn.Beside;
+  if (currentPreviewPanel) {
+    targetColumn = currentPreviewPanel.viewColumn || vscode.ViewColumn.Beside;
+    // 销毁旧面板以释放资源（监听器等会在 onDidDispose 中清理）
+    currentPreviewPanel.dispose();
+    currentPreviewPanel = undefined;
+    currentPreviewDocUri = undefined;
+  }
+
+  // 创建新的 Webview 面板，复用之前的列位置
   const panel = vscode.window.createWebviewPanel(
     'intelligentMarkdown.preview',
     `配置预览: ${path.basename(document.fileName)}`,
-    vscode.ViewColumn.Beside,
+    { viewColumn: targetColumn, preserveFocus: true },
     {
       enableScripts: true,
       retainContextWhenHidden: true,
@@ -220,9 +236,16 @@ async function openPreviewForDocument(
     }
   );
 
-  // 监听面板关闭，从已打开列表中移除
+  // 更新跟踪引用
+  currentPreviewPanel = panel;
+  currentPreviewDocUri = docUri;
+
+  // 监听面板关闭，清理引用
   panel.onDidDispose(() => {
-    openedPreviews.delete(document.uri.toString());
+    if (currentPreviewPanel === panel) {
+      currentPreviewPanel = undefined;
+      currentPreviewDocUri = undefined;
+    }
   });
 
   // 使用 SmartMarkdownEditorProvider 的逻辑
@@ -235,7 +258,7 @@ async function openPreviewForDocument(
 }
 
 /**
- * 打开预览面板
+ * 打开预览面板（手动命令，复用现有面板）
  */
 async function openPreviewPanel(context: vscode.ExtensionContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
@@ -250,21 +273,8 @@ async function openPreviewPanel(context: vscode.ExtensionContext): Promise<void>
     return;
   }
 
-  // 创建 Webview 面板
-  const panel = vscode.window.createWebviewPanel(
-    'intelligentMarkdown.preview',
-    `配置预览: ${editor.document.fileName.split(/[\\/]/).pop()}`,
-    vscode.ViewColumn.Beside,
-    {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [context.extensionUri]
-    }
-  );
-
-  // 使用 SmartMarkdownEditorProvider 的逻辑
-  const editorProvider = new SmartMarkdownEditorProvider(context);
-  await editorProvider.resolveCustomTextEditor(editor.document, panel, new vscode.CancellationTokenSource().token);
+  // 直接复用 openPreviewForDocument 的面板复用逻辑
+  await openPreviewForDocument(context, editor.document);
 }
 
 /**
