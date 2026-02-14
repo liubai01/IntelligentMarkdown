@@ -313,6 +313,7 @@ npm run watch
 
 ## 📚 Documentation
 
+- 📗 [**lua-config Reference**](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md) — Complete syntax reference for `lua-config` blocks
 - 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md) — Detailed usage instructions
 - 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/ARCHITECTURE.md) — Technical documentation
 
@@ -360,6 +361,7 @@ MIT © [liubai01](https://github.com/liubai01)
 
 <p align="center">
   <a href="https://github.com/liubai01/IntelligentMarkdown"><strong>⭐ Star on GitHub</strong></a> · 
+  <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md"><strong>📗 Reference</strong></a> · 
   <a href="https://github.com/liubai01/IntelligentMarkdown/issues"><strong>🐛 Report Issues</strong></a> · 
   <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md"><strong>📖 User Guide</strong></a>
 </p>
