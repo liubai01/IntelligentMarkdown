@@ -1,19 +1,19 @@
-# 游戏事件系统配置
+# Game Event System Configuration
 
-本文档管理游戏中的核心事件回调函数。每个事件可以在 VS Code 中直接编辑，编辑完成后点击 "Apply" 即可应用到源文件。
+This document manages core event callback functions in the game. Each event can be edited directly in VS Code; click "Save" to apply changes to the source file.
 
-## 事件系统设置
+## Event System Settings
 
-### 启用日志
+### Enable Logging
 
 ```lua-config
 file: ./game_events.lua
 key: GameEvents.Settings.EnableLog
 type: boolean
-label: 事件日志开关
+label: Event Logging Toggle
 ```
 
-### 最大重试次数
+### Max Retries
 
 ```lua-config
 file: ./game_events.lua
@@ -22,10 +22,10 @@ type: number
 min: 1
 max: 10
 step: 1
-label: 最大重试次数
+label: Max Retries
 ```
 
-### 事件队列大小
+### Event Queue Size
 
 ```lua-config
 file: ./game_events.lua
@@ -34,49 +34,49 @@ type: slider
 min: 64
 max: 1024
 step: 64
-label: 事件队列大小
+label: Event Queue Size
 ```
 
-## 事件处理函数
+## Event Handler Functions
 
-> 以下每个事件函数都可以直接在 VS Code 中编辑，享受完整的语法高亮、IntelliSense 和跳转功能。
+> Each event function below can be edited directly in VS Code with full syntax highlighting, IntelliSense, and navigation support.
 
-### 玩家死亡回调
+### Player Death Callback
 
-> 策划备注：玩家死亡后会有概率掉落物品，并启动复活计时器。修改掉落率请调整 `dropRate` 变量。
+> Design note: Players have a chance to drop items on death, and a respawn timer starts. Adjust the `dropRate` variable to change drop probability.
 
 ```lua-config
 file: ./game_events.lua
 key: GameEvents.onPlayerDeath
 type: code
-label: 玩家死亡事件
+label: Player Death Event
 ```
 
-### 玩家升级回调
+### Player Level Up Callback
 
-> 策划备注：升级时会恢复满血满蓝，并根据等级解锁新技能。可在 `skillUnlocks` 表中配置技能解锁等级。
+> Design note: On level up, HP and MP are fully restored, and new skills are unlocked based on level. Configure skill unlock levels in the `skillUnlocks` table.
 
 ```lua-config
 file: ./game_events.lua
 key: GameEvents.onPlayerLevelUp
 type: code
-label: 玩家升级事件
+label: Player Level Up Event
 ```
 
-### 怪物击杀回调
+### Monster Kill Callback
 
-> 策划备注：击杀怪物发放经验和金币奖励，Boss 有额外掉落。经验计算受玩家经验加成影响。
+> Design note: Killing monsters grants experience and gold rewards. Bosses have additional loot drops. Experience calculation is affected by the player's exp bonus.
 
 ```lua-config
 file: ./game_events.lua
 key: GameEvents.onMonsterKilled
 type: code
-label: 怪物击杀事件
+label: Monster Kill Event
 ```
 
-## 使用说明
+## Instructions
 
-- **事件日志**：开启后会在控制台输出事件触发日志，便于调试
-- **编辑函数**：点击 "✏️ Edit in VS Code" 会在 VS Code 原生编辑器中打开函数代码
-- **应用更改**：编辑完成后点击 "💾 Apply to Source" 将修改写回源文件
-- **跳转源码**：点击 📍 按钮可以直接跳转到 Lua 源文件对应位置
+- **Event Logging**: When enabled, event trigger logs are output to the console for debugging
+- **Edit Functions**: Click the code block to edit the function directly
+- **Apply Changes**: After editing, click "💾 Save" to write changes back to the source file
+- **Jump to Source**: Click the 📍 button to navigate to the corresponding location in the Lua source file

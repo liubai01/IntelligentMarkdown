@@ -1,24 +1,24 @@
--- 玩家配置表
--- 作者：游戏程序组
--- 最后修改：2024-01-15
+-- Player Configuration Table
+-- Author: Game Programming Team
+-- Last modified: 2024-01-15
 
 PlayerConfig = {
-    -- 基础属性
+    -- Base Stats
     BaseStats = {
-        HP = 4800,      -- 基础生命值
-        MP = 650,       -- 基础魔法值
-        Attack = 465,   -- 基础攻击力
-        Defense = 50,   -- 基础防御力
-        MoveSpeed = 440 -- 移动速度
+        HP = 4800,      -- Base health points
+        MP = 650,       -- Base mana points
+        Attack = 465,   -- Base attack power
+        Defense = 50,   -- Base defense
+        MoveSpeed = 440 -- Movement speed
     },
     
-    -- 技能配置
+    -- Skill Configuration
     Skills = {
-        DefaultSkillId = 1001,  -- 默认技能
-        MaxSkillSlots = 4,      -- 最大技能槽位
+        DefaultSkillId = 1001,  -- Default skill
+        MaxSkillSlots = 4,      -- Max skill slots
     },
     
-    -- 其他配置
+    -- Other Settings
     Settings = {
         ShowTutorial = true,
         Language = "zh-CN",

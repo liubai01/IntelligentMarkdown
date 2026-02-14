@@ -1,12 +1,12 @@
-# 玩家属性配置文档
+# Player Stats Configuration
 
-本文档用于配置玩家的基础属性，修改后会自动同步到 Lua 代码。
+This document configures the player's base attributes. Changes are automatically synced to Lua code.
 
-## 基础属性
+## Base Stats
 
-### 生命值
+### Health Points
 
-> 策划备注：初始生命值不要超过 10000，否则会影响游戏平衡。
+> Design note: Initial HP should not exceed 10000, as it may affect game balance.
 
 ```lua-config
 file: ./player_config.lua
@@ -15,10 +15,10 @@ type: number
 min: 100
 max: 10000
 step: 100
-label: 基础生命值
+label: Base HP
 ```
 
-### 魔法值
+### Mana Points
 
 ```lua-config
 file: ./player_config.lua
@@ -27,10 +27,10 @@ type: number
 min: 0
 max: 5000
 step: 50
-label: 基础魔法值
+label: Base MP
 ```
 
-### 攻击力
+### Attack Power
 
 ```lua-config
 file: ./player_config.lua
@@ -38,10 +38,10 @@ key: PlayerConfig.BaseStats.Attack
 type: slider
 range: [10, 500]
 step: 5
-label: 基础攻击力
+label: Base Attack
 ```
 
-### 移动速度
+### Movement Speed
 
 ```lua-config
 file: ./player_config.lua
@@ -49,54 +49,54 @@ key: PlayerConfig.BaseStats.MoveSpeed
 type: slider
 range: [100, 500]
 step: 10
-label: 基础移动速度
-unit: 单位/秒
+label: Base Move Speed
+unit: units/sec
 ```
 
-## 技能配置
+## Skill Configuration
 
-### 默认技能 ID
+### Default Skill ID
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Skills.DefaultSkillId
 type: number
-label: 出生默认技能 ID
+label: Default Skill ID
 ```
 
-## 游戏设置
+## Game Settings
 
-### 是否显示新手引导
+### Show Tutorial
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Settings.ShowTutorial
 type: boolean
-label: 新手引导开关
+label: Tutorial Toggle
 ```
 
-### 游戏语言
+### Game Language
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Settings.Language
 type: select
 options:
-  - { value: "zh-CN", label: "简体中文" }
+  - { value: "zh-CN", label: "Chinese (Simplified)" }
   - { value: "en-US", label: "English" }
-  - { value: "ja-JP", label: "日本語" }
-label: 游戏语言
+  - { value: "ja-JP", label: "Japanese" }
+label: Game Language
 ```
 
-### 游戏难度
+### Game Difficulty
 
 ```lua-config
 file: ./player_config.lua
 key: PlayerConfig.Settings.Difficulty
 type: select
 options:
-  - { value: "easy", label: "简单" }
-  - { value: "normal", label: "普通" }
-  - { value: "hard", label: "困难" }
-label: 游戏难度
+  - { value: "easy", label: "Easy" }
+  - { value: "normal", label: "Normal" }
+  - { value: "hard", label: "Hard" }
+label: Game Difficulty
 ```

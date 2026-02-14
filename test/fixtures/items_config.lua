@@ -1,20 +1,20 @@
--- 物品配置表
--- 用于配置游戏中的物品属性
+-- Item Configuration Table
+-- Configures in-game item attributes
 
 ItemsConfig = {
-    -- 武器列表
+    -- Weapon List
     Weapons = {
-        { id = 1001, name = "木剑", attack = 10, price = 50, stackable = true },
-        { id = 1002, name = "铁剑", attack = 25, price = 200, stackable = true },
-        { id = 1003, name = "钢剑", attack = 45, price = 500, stackable = true },
-        { id = 1004, name = "神圣之剑", attack = 100, price = 2000, stackable = false }
+        { id = 1001, name = "Wooden Sword", attack = 10, price = 50, stackable = true },
+        { id = 1002, name = "Iron Sword", attack = 25, price = 200, stackable = true },
+        { id = 1003, name = "Steel Sword", attack = 45, price = 500, stackable = true },
+        { id = 1004, name = "Holy Blade", attack = 100, price = 2000, stackable = false }
     },
     
-    -- 药水列表
+    -- Potion List
     Potions = {
-        { id = 2001, name = "小生命药水", effect = "heal", value = 50, price = 20, stackable = true },
-        { id = 2002, name = "中生命药水", effect = "heal", value = 150, price = 80, stackable = true },
-        { id = 2003, name = "大生命药水", effect = "heal", value = 300, price = 200, stackable = true }
+        { id = 2001, name = "Small Health Potion", effect = "heal", value = 50, price = 20, stackable = true },
+        { id = 2002, name = "Medium Health Potion", effect = "heal", value = 150, price = 80, stackable = true },
+        { id = 2003, name = "Large Health Potion", effect = "heal", value = 300, price = 200, stackable = true }
     }
 }
 

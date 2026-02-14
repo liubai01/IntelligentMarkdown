@@ -1,46 +1,46 @@
-# 物品配置文档
+# Item Configuration
 
-本文档用于批量管理游戏中的物品配置，支持表格形式批量编辑。
+This document manages in-game item configurations with table-based batch editing support.
 
-## 武器列表
+## Weapon List
 
-以下是游戏中所有武器的配置表格，可以直接在表格中修改属性：
+Below is the configuration table for all weapons in the game. You can modify attributes directly in the table:
 
 ```lua-config
 file: ./items_config.lua
 key: ItemsConfig.Weapons
 type: table
-label: 武器配置表
+label: Weapon Config Table
 columns:
   - { key: "id", label: "ID", type: "number", readonly: true, width: "80px" }
-  - { key: "name", label: "武器名称", type: "string", width: "150px" }
-  - { key: "attack", label: "攻击力", type: "number", min: 1, max: 999, step: 5, width: "100px" }
-  - { key: "price", label: "价格", type: "number", min: 0, max: 99999, step: 10, width: "100px" }
-  - { key: "stackable", label: "可堆叠", type: "boolean", width: "80px" }
+  - { key: "name", label: "Weapon Name", type: "string", width: "150px" }
+  - { key: "attack", label: "Attack", type: "number", min: 1, max: 999, step: 5, width: "100px" }
+  - { key: "price", label: "Price", type: "number", min: 0, max: 99999, step: 10, width: "100px" }
+  - { key: "stackable", label: "Stackable", type: "boolean", width: "80px" }
 ```
 
-## 药水列表
+## Potion List
 
-药水的效果类型可以从下拉菜单中选择：
+Potion effect types can be selected from a dropdown menu:
 
 ```lua-config
 file: ./items_config.lua
 key: ItemsConfig.Potions
 type: table
-label: 药水配置表
+label: Potion Config Table
 columns:
   - { key: "id", label: "ID", type: "number", readonly: true, width: "80px" }
-  - { key: "name", label: "药水名称", type: "string", width: "150px" }
-  - { key: "effect", label: "效果类型", type: "select", width: "120px", options: [{ value: "heal", label: "治疗" }, { value: "mana", label: "魔法" }, { value: "buff", label: "增益" }] }
-  - { key: "value", label: "效果数值", type: "number", min: 1, max: 9999, step: 10, width: "100px" }
-  - { key: "price", label: "价格", type: "number", min: 0, max: 9999, step: 5, width: "100px" }
-  - { key: "stackable", label: "可堆叠", type: "boolean", width: "80px" }
+  - { key: "name", label: "Potion Name", type: "string", width: "150px" }
+  - { key: "effect", label: "Effect Type", type: "select", width: "120px", options: [{ value: "heal", label: "Heal" }, { value: "mana", label: "Mana" }, { value: "buff", label: "Buff" }] }
+  - { key: "value", label: "Effect Value", type: "number", min: 1, max: 9999, step: 10, width: "100px" }
+  - { key: "price", label: "Price", type: "number", min: 0, max: 9999, step: 5, width: "100px" }
+  - { key: "stackable", label: "Stackable", type: "boolean", width: "80px" }
 ```
 
-## 使用说明
+## Instructions
 
-- **ID 列**：只读，不可修改
-- **名称列**：文本输入
-- **数值列**：数字输入，有范围限制
-- **可堆叠列**：复选框，直接点击切换
-- **效果类型**：下拉选择
+- **ID Column**: Read-only, cannot be modified
+- **Name Column**: Text input
+- **Numeric Columns**: Number input with range constraints
+- **Stackable Column**: Checkbox, click to toggle
+- **Effect Type**: Dropdown selection

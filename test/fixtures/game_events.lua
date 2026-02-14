@@ -1,22 +1,22 @@
--- 游戏事件系统
--- 管理游戏中各种事件的回调函数和相关配置
--- 最后修改：2025-02-14
+-- Game Event System
+-- Manages callback functions and related configuration for various in-game events
+-- Last modified: 2025-02-14
 
 GameEvents = {
-    -- 事件系统全局设置
+    -- Event System Global Settings
     Settings = {
         EnableLog = true,
         MaxRetries = 3,
         EventQueueSize = 256
     },
 
-    -- 玩家死亡事件
+    -- Player Death Event
     onPlayerDeath = function(player, killer)
         local deathPos = player:GetPosition()
         print("[Event] Player " .. player.name .. " died at " .. tostring(deathPos))
 
-        -- 掉落物品
-        local dropRate = 0.3
+        -- Drop items
+        local dropRate = 0.4
         if math.random() < dropRate then
             local item = player:GetRandomItem()
             if item then
@@ -25,24 +25,24 @@ GameEvents = {
             end
         end
 
-        -- 复活计时
+        -- Respawn timer
         player:StartRespawnTimer(10)
     end,
 
-    -- 玩家升级事件
+    -- Player Level Up Event
     onPlayerLevelUp = function(player, newLevel)
         print("[Event] Player " .. player.name .. " reached level " .. newLevel)
 
-        -- 恢复满血满蓝
+        -- Restore full HP and MP
         player:SetHP(player:GetMaxHP())
         player:SetMP(player:GetMaxMP())
 
-        -- 解锁新技能
+        -- Unlock new skills
         local skillUnlocks = {
-            [5]  = 2001,  -- 5级解锁火球术
-            [10] = 2002,  -- 10级解锁冰冻术
-            [15] = 2003,  -- 15级解锁雷电术
-            [20] = 2004   -- 20级解锁治愈术
+            [5]  = 2001,  -- Level 5: Fireball
+            [10] = 2002,  -- Level 10: Frost Nova
+            [15] = 2003,  -- Level 15: Lightning Bolt
+            [20] = 2004   -- Level 20: Healing Light
         }
 
         local skillId = skillUnlocks[newLevel]
@@ -51,21 +51,21 @@ GameEvents = {
             UI:ShowNotification("New skill unlocked!")
         end
 
-        -- 播放升级特效
+        -- Play level up effects
         VFX:Play("level_up", player:GetPosition())
         Sound:Play("sfx_level_up")
     end,
 
-    -- 怪物被击杀事件
+    -- Monster Killed Event
     onMonsterKilled = function(monster, killer)
         local expReward = monster.baseExp * (1 + killer:GetExpBonus())
         local goldReward = monster.baseGold
 
-        -- 发放奖励
+        -- Grant rewards
         killer:AddExp(expReward)
         killer:AddGold(goldReward)
 
-        -- Boss 额外掉落
+        -- Boss bonus loot
         if monster.isBoss then
             local lootTable = monster:GetBossLootTable()
             for _, loot in ipairs(lootTable) do
