@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import hljs from 'highlight.js';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { LuaParser } from '../core/parser/luaParser';
@@ -18,6 +19,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private configParser: ConfigBlockParser;
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
+  /** 代码块缩进归一化缓存（每次渲染时重建） */
+  private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configParser = new ConfigBlockParser();
@@ -57,6 +60,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             break;
           case 'gotoSource':
             await this.handleGotoSource(message);
+            break;
+          case 'requestHighlight':
+            this.handleHighlightRequest(webviewPanel.webview, message);
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
@@ -237,6 +243,93 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
+   * 处理语法高亮请求（来自 Webview）
+   */
+  private handleHighlightRequest(
+    webview: vscode.Webview,
+    message: { blockId: string; code: string; lang: string }
+  ): void {
+    try {
+      const lang = message.lang || 'lua';
+      let highlighted: string;
+      try {
+        highlighted = hljs.highlight(message.code, { language: lang, ignoreIllegals: true }).value;
+      } catch {
+        highlighted = hljs.highlightAuto(message.code).value;
+      }
+      webview.postMessage({
+        type: 'highlightResult',
+        blockId: message.blockId,
+        html: highlighted
+      });
+    } catch {
+      // 静默失败，保留上次高亮
+    }
+  }
+
+  /**
+   * 归一化缩进：提取非首行的公共缩进前缀并去除
+   * 首行保持不变（通常是 function 关键字，没有前导缩进）
+   */
+  private normalizeIndentation(code: string): { normalized: string; baseIndent: string } {
+    const lines = code.split('\n');
+    if (lines.length <= 1) { return { normalized: code, baseIndent: '' }; }
+
+    // 找到第 2 行及之后非空行的最小缩进
+    let minIndent = Infinity;
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === '') { continue; }
+      const match = line.match(/^(\s+)/);
+      const indent = match ? match[1].length : 0;
+      minIndent = Math.min(minIndent, indent);
+    }
+
+    if (minIndent === 0 || minIndent === Infinity) { return { normalized: code, baseIndent: '' }; }
+
+    // 提取 baseIndent 实际字符串（保留 tab/space 原样）
+    const refLine = lines.find((l, i) => i > 0 && l.trim() !== '');
+    const baseIndent = refLine ? refLine.substring(0, minIndent) : ' '.repeat(minIndent);
+
+    const normalizedLines = lines.map((line, i) => {
+      if (i === 0) { return line; }
+      if (line.trim() === '') { return ''; }
+      return line.substring(minIndent);
+    });
+
+    return { normalized: normalizedLines.join('\n'), baseIndent };
+  }
+
+  /**
+   * 还原缩进
+   */
+  private denormalizeIndentation(code: string, baseIndent: string): string {
+    if (!baseIndent) { return code; }
+    const lines = code.split('\n');
+    return lines.map((line, i) => {
+      if (i === 0) { return line; }
+      if (line.trim() === '') { return line; }
+      return baseIndent + line;
+    }).join('\n');
+  }
+
+  /**
+   * 从文件路径获取语言标识
+   */
+  private getLanguageFromFile(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    const langMap: Record<string, string> = {
+      '.lua': 'lua', '.js': 'javascript', '.ts': 'typescript',
+      '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
+      '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c',
+      '.cs': 'csharp', '.sh': 'bash', '.sql': 'sql', '.json': 'json',
+      '.xml': 'xml', '.html': 'html', '.css': 'css', '.yaml': 'yaml',
+      '.yml': 'yaml', '.toml': 'ini', '.md': 'markdown',
+    };
+    return langMap[ext] || 'plaintext';
+  }
+
+  /**
    * 生成 HTML 内容
    */
   private getHtmlContent(
@@ -244,6 +337,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     markdownText: string,
     linkedBlocks: LinkedConfigBlock[]
   ): string {
+    // 清除缩进归一化缓存
+    this.codeNormCache.clear();
+
     // 将 markdown 转换为 HTML，并替换配置块为控件
     const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks);
 
@@ -541,38 +637,63 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染代码编辑控件（原地编辑 textarea + 保存 + 跳转）
+   * 渲染代码编辑控件（overlay 高亮 + textarea 编辑 + 缩进归一化）
    */
   private renderCodeInput(block: LinkedConfigBlock, blockId: string): string {
     const functionSource = block.currentValue || '-- No function found';
-    const escapedSource = this.escapeHtml(functionSource);
-    const lineCount = functionSource.split('\n').length;
+
+    // 缩进归一化
+    const { normalized, baseIndent } = this.normalizeIndentation(functionSource);
+    this.codeNormCache.set(blockId, { normalized, baseIndent });
+
+    const escapedSource = this.escapeHtml(normalized);
+    const lineCount = normalized.split('\n').length;
     const rows = Math.max(6, Math.min(lineCount + 1, 30));
+
+    // 语法高亮（服务端预渲染）
+    const lang = this.getLanguageFromFile(block.absoluteFilePath);
+    let highlightedHtml: string;
+    try {
+      highlightedHtml = hljs.highlight(normalized, { language: lang, ignoreIllegals: true }).value;
+    } catch {
+      highlightedHtml = this.escapeHtml(normalized);
+    }
 
     return `
 <div class="code-wrapper">
-  <div class="code-toolbar">
-    <button class="code-btn code-save-btn" onclick="saveCode('${blockId}')" title="Save changes to source file">
-      💾 Save
-    </button>
-    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="Jump to function in source file">📍 Jump to Source</button>` : ''}
+  <div class="code-modified-hint" id="${blockId}-modified" style="display:none;">
+    ⚠️ 内容已修改，可以保存
   </div>
-  <textarea
-    id="${blockId}"
-    class="code-textarea"
-    rows="${rows}"
-    spellcheck="false"
-    onkeydown="handleCodeKeydown(event, '${blockId}')"
-  >${escapedSource}</textarea>
+  <div class="code-toolbar">
+    <button class="code-btn code-save-btn" onclick="saveCode('${blockId}')" title="保存修改到源文件">
+      💾 保存
+    </button>
+    <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="重置为原始代码">
+      ↩️ 重置
+    </button>
+    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="跳转到源文件函数">📍 跳转源码</button>` : ''}
+  </div>
+  <div class="code-overlay-container" id="${blockId}-container">
+    <pre class="code-highlight-pre" id="${blockId}-pre" aria-hidden="true"><code class="hljs" id="${blockId}-highlight">${highlightedHtml}</code></pre>
+    <textarea
+      id="${blockId}"
+      class="code-overlay-textarea"
+      rows="${rows}"
+      spellcheck="false"
+      onkeydown="handleCodeKeydown(event, '${blockId}')"
+      oninput="onCodeInput('${blockId}')"
+      onscroll="syncScroll('${blockId}')"
+    >${escapedSource}</textarea>
+  </div>
 </div>`;
   }
 
   /**
-   * 处理代码保存：直接从 webview 接收编辑后的代码文本，写回源文件
+   * 处理代码保存：从 webview 接收归一化后的代码，还原缩进后写回源文件
    */
   private async handleSaveCode(
     document: vscode.TextDocument,
-    message: { file: string; key: string; code: string }
+    message: { file: string; key: string; code: string; baseIndent: string }
   ): Promise<void> {
     try {
       const mdDir = path.dirname(document.uri.fsPath);
@@ -593,10 +714,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         return;
       }
 
+      // 还原缩进：将归一化的代码恢复原始缩进
+      const restoredCode = this.denormalizeIndentation(message.code, message.baseIndent || '');
+
       // 精准替换：只替换函数部分，保留前后所有内容
       const before = luaCode.substring(0, result.node.range[0]);
       const after = luaCode.substring(result.node.range[1]);
-      const newCode = before + message.code + after;
+      const newCode = before + restoredCode + after;
 
       // 写入源文件
       fs.writeFileSync(luaPath, newCode, 'utf-8');
@@ -1282,6 +1406,21 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         margin: 4px 0;
       }
 
+      /* 修改提示 */
+      .code-modified-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--vscode-editorWarning-foreground, #cca700);
+        background: rgba(204, 167, 0, 0.08);
+        border-radius: 6px;
+        border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+      }
+
       .code-toolbar {
         display: flex;
         gap: 8px;
@@ -1306,6 +1445,16 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       .code-save-btn:hover { opacity: 0.85; }
 
+      .code-reset-btn {
+        background: var(--color-canvas-subtle);
+        color: var(--color-fg-default);
+      }
+
+      .code-reset-btn:hover {
+        border-color: var(--color-danger);
+        background: rgba(207, 34, 46, 0.08);
+      }
+
       .code-goto-btn {
         background: var(--color-canvas-subtle);
         color: var(--color-fg-default);
@@ -1316,29 +1465,120 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
-      .code-textarea {
+      /* Overlay 容器 */
+      .code-overlay-container {
+        position: relative;
         width: 100%;
-        padding: 10px 14px;
         border: 1px solid var(--input-border);
         border-radius: 6px;
+        overflow: hidden;
         background: var(--vscode-textCodeBlock-background, var(--input-bg));
-        color: var(--input-fg);
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+
+      .code-overlay-container:focus-within {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+      }
+
+      /* 高亮层 (在下方) */
+      .code-highlight-pre {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        margin: 0;
+        padding: 10px 14px;
         font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
         font-size: 12px;
         line-height: 1.6;
         tab-size: 4;
+        white-space: pre;
+        overflow: auto;
+        pointer-events: none;
+        z-index: 1;
+        background: transparent;
+      }
+
+      .code-highlight-pre code.hljs {
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
+        white-space: pre;
+        display: block;
+      }
+
+      /* 编辑层 (在上方, 文字透明) */
+      .code-overlay-textarea {
+        display: block;
+        position: relative;
+        width: 100%;
+        margin: 0;
+        padding: 10px 14px;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        tab-size: 4;
+        background: transparent;
+        color: transparent;
+        caret-color: var(--input-fg);
+        border: none;
         resize: vertical;
         white-space: pre;
         overflow-wrap: normal;
-        overflow-x: auto;
-        transition: border-color 0.15s, box-shadow 0.15s;
+        overflow: auto;
+        z-index: 2;
+        outline: none;
       }
 
-      .code-textarea:focus {
-        outline: none;
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+      .code-overlay-textarea::selection {
+        background: rgba(9, 105, 218, 0.3);
       }
+
+      /* ========== highlight.js 主题 (VS Code 自适应) ========== */
+      .hljs {
+        color: var(--vscode-editor-foreground);
+        background: transparent;
+      }
+
+      /* 深色主题 */
+      .hljs-keyword, .hljs-selector-tag { color: #569cd6; }
+      .hljs-literal { color: #569cd6; }
+      .hljs-string, .hljs-template-variable { color: #ce9178; }
+      .hljs-comment, .hljs-quote { color: #6a9955; font-style: italic; }
+      .hljs-number, .hljs-symbol { color: #b5cea8; }
+      .hljs-title, .hljs-title.function_ { color: #dcdcaa; }
+      .hljs-built_in { color: #4ec9b0; }
+      .hljs-variable, .hljs-attr { color: #9cdcfe; }
+      .hljs-type, .hljs-title.class_ { color: #4ec9b0; }
+      .hljs-meta, .hljs-meta .hljs-keyword { color: #569cd6; }
+      .hljs-params { color: #9cdcfe; }
+      .hljs-section { color: #dcdcaa; }
+      .hljs-name { color: #569cd6; }
+      .hljs-attribute { color: #9cdcfe; }
+      .hljs-addition { color: #b5cea8; }
+      .hljs-deletion { color: #ce9178; }
+
+      /* 浅色主题覆盖 */
+      body.vscode-light .hljs-keyword, body.vscode-light .hljs-selector-tag { color: #0000ff; }
+      body.vscode-light .hljs-literal { color: #0000ff; }
+      body.vscode-light .hljs-string, body.vscode-light .hljs-template-variable { color: #a31515; }
+      body.vscode-light .hljs-comment, body.vscode-light .hljs-quote { color: #008000; }
+      body.vscode-light .hljs-number, body.vscode-light .hljs-symbol { color: #098658; }
+      body.vscode-light .hljs-title, body.vscode-light .hljs-title.function_ { color: #795e26; }
+      body.vscode-light .hljs-built_in { color: #267f99; }
+      body.vscode-light .hljs-variable, body.vscode-light .hljs-attr { color: #001080; }
+      body.vscode-light .hljs-type, body.vscode-light .hljs-title.class_ { color: #267f99; }
+      body.vscode-light .hljs-meta, body.vscode-light .hljs-meta .hljs-keyword { color: #0000ff; }
+      body.vscode-light .hljs-params { color: #001080; }
+      body.vscode-light .hljs-name { color: #800000; }
+      body.vscode-light .hljs-attribute { color: #e50000; }
+      body.vscode-light .hljs-addition { color: #098658; }
+      body.vscode-light .hljs-deletion { color: #a31515; }
 
       /* ========== 更新动画 ========== */
       @keyframes flash {
@@ -1356,24 +1596,42 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
    * 获取脚本
    */
   private getScript(linkedBlocks: LinkedConfigBlock[]): string {
-    // 创建块数据映射
+    // 创建块数据映射（包含代码块的归一化信息）
     const blockDataMap: Record<string, any> = {};
     for (const block of linkedBlocks) {
       const blockId = this.generateBlockId(block);
+      const normData = this.codeNormCache.get(blockId);
       blockDataMap[blockId] = {
         file: block.file,
         key: block.key,
         type: block.type,
         min: block.min,
         max: block.max,
-        step: block.step || 1
+        step: block.step || 1,
+        lang: block.type === 'code' ? this.getLanguageFromFile(block.absoluteFilePath) : undefined,
+        baseIndent: normData?.baseIndent || '',
+        originalCode: normData?.normalized || ''
       };
     }
 
     return `
       const vscode = acquireVsCodeApi();
       const blockData = ${JSON.stringify(blockDataMap)};
+      const highlightTimers = {};
 
+      /* ========== 监听来自扩展的消息（语法高亮结果） ========== */
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        switch (msg.type) {
+          case 'highlightResult': {
+            var codeEl = document.getElementById(msg.blockId + '-highlight');
+            if (codeEl) codeEl.innerHTML = msg.html;
+            break;
+          }
+        }
+      });
+
+      /* ========== 通用控件函数 ========== */
       function updateValue(blockId) {
         const input = document.getElementById(blockId);
         const data = blockData[blockId];
@@ -1382,13 +1640,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         let value;
         if (input.type === 'checkbox') {
           value = input.checked;
-          // 更新标签
           const label = input.closest('.switch').querySelector('.switch-label');
           if (label) label.textContent = value ? '开启' : '关闭';
         } else if (input.type === 'number' || input.type === 'range') {
           value = parseFloat(input.value);
           if (isNaN(value)) return;
-          // 验证范围
           if (data.min !== undefined && value < data.min) {
             value = data.min;
             input.value = value;
@@ -1399,14 +1655,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           }
         } else if (input.tagName === 'SELECT') {
           value = input.value;
-          // 尝试转为数字
           const numValue = parseFloat(value);
           if (!isNaN(numValue)) value = numValue;
         } else {
           value = input.value;
         }
 
-        // 发送更新消息
         vscode.postMessage({
           type: 'updateValue',
           file: data.file,
@@ -1415,11 +1669,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           valueType: data.type
         });
 
-        // 添加更新动画
         const block = input.closest('.config-block');
         if (block) {
           block.classList.remove('updated');
-          void block.offsetWidth; // 触发重绘
+          void block.offsetWidth;
           block.classList.add('updated');
         }
       }
@@ -1444,7 +1697,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           value = input.value;
         }
 
-        // 发送表格单元格更新消息
         vscode.postMessage({
           type: 'updateTableCell',
           file: data.file,
@@ -1454,7 +1706,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           value: value
         });
 
-        // 添加更新动画
         const block = input.closest('.config-block');
         if (block) {
           block.classList.remove('updated');
@@ -1471,7 +1722,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         const step = data.step || 1;
         let value = parseFloat(input.value) + (delta * step);
 
-        // 限制范围
         if (data.min !== undefined && value < data.min) value = data.min;
         if (data.max !== undefined && value > data.max) value = data.max;
 
@@ -1493,17 +1743,86 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
+      /* ========== 代码编辑器：高亮 + 重置 + 修改检测 ========== */
+
+      /** 请求扩展侧进行语法高亮（带去抖） */
+      function requestHighlight(blockId) {
+        const textarea = document.getElementById(blockId);
+        const data = blockData[blockId];
+        if (!textarea || !data) return;
+
+        clearTimeout(highlightTimers[blockId]);
+        highlightTimers[blockId] = setTimeout(function() {
+          vscode.postMessage({
+            type: 'requestHighlight',
+            blockId: blockId,
+            code: textarea.value,
+            lang: data.lang || 'lua'
+          });
+        }, 250);
+      }
+
+      /** textarea 输入时：检测修改 + 请求高亮 */
+      function onCodeInput(blockId) {
+        const textarea = document.getElementById(blockId);
+        const data = blockData[blockId];
+        if (!textarea || !data) return;
+
+        // 检测是否有修改
+        const modified = textarea.value !== data.originalCode;
+        const hint = document.getElementById(blockId + '-modified');
+        if (hint) hint.style.display = modified ? 'flex' : 'none';
+
+        // 请求语法高亮
+        requestHighlight(blockId);
+      }
+
+      /** 同步 textarea 与 pre 的滚动位置 */
+      function syncScroll(blockId) {
+        const textarea = document.getElementById(blockId);
+        const pre = document.getElementById(blockId + '-pre');
+        if (textarea && pre) {
+          pre.scrollTop = textarea.scrollTop;
+          pre.scrollLeft = textarea.scrollLeft;
+        }
+      }
+
+      /** 重置代码到原始内容 */
+      function resetCode(blockId) {
+        const textarea = document.getElementById(blockId);
+        const data = blockData[blockId];
+        if (!textarea || !data) return;
+
+        textarea.value = data.originalCode;
+
+        // 隐藏修改提示
+        const hint = document.getElementById(blockId + '-modified');
+        if (hint) hint.style.display = 'none';
+
+        // 重新请求高亮
+        requestHighlight(blockId);
+      }
+
+      /** 保存代码（还原缩进后发送） */
       function saveCode(blockId) {
         const textarea = document.getElementById(blockId);
         const data = blockData[blockId];
         if (!textarea || !data) return;
+
         vscode.postMessage({
           type: 'saveCode',
           file: data.file,
           key: data.key,
-          code: textarea.value
+          code: textarea.value,
+          baseIndent: data.baseIndent || ''
         });
-        // flash animation
+
+        // 保存后更新 originalCode 基线
+        data.originalCode = textarea.value;
+        const hint = document.getElementById(blockId + '-modified');
+        if (hint) hint.style.display = 'none';
+
+        // 闪烁动画
         const block = textarea.closest('.config-block');
         if (block) {
           block.classList.remove('updated');
@@ -1513,7 +1832,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       function handleCodeKeydown(event, blockId) {
-        // Tab inserts tab character instead of moving focus
+        // Tab 插入制表符
         if (event.key === 'Tab') {
           event.preventDefault();
           const ta = document.getElementById(blockId);
@@ -1522,8 +1841,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           const end = ta.selectionEnd;
           ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
           ta.selectionStart = ta.selectionEnd = start + 4;
+          onCodeInput(blockId);
         }
-        // Ctrl+S / Cmd+S saves
+        // Ctrl+S / Cmd+S 保存
         if ((event.ctrlKey || event.metaKey) && event.key === 's') {
           event.preventDefault();
           saveCode(blockId);
