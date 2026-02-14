@@ -1,6 +1,6 @@
 /**
  * Intelligent Markdown for Lua
- * VS Code 插件入口
+ * VS Code extension entry point
  */
 
 import * as vscode from 'vscode';
@@ -15,17 +15,17 @@ import { SmartMarkdownEditorProvider } from './editor/smartMarkdownEditor';
 
 let decorationProvider: LuaConfigDecorationProvider | undefined;
 
-// 当前活动的预览面板（复用以避免创建过多窗口）
+// Current active preview panel (reuse to avoid creating too many windows)
 let currentPreviewPanel: vscode.WebviewPanel | undefined;
 let currentPreviewDocUri: string | undefined;
 
 /**
- * 插件激活
+ * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('Intelligent Markdown for Lua 已激活');
+  console.log('Intelligent Markdown for Lua activated');
 
-  // 注册文档链接提供者
+  // Register document link provider
   const linkProvider = new LuaConfigDocumentLinkProvider();
   context.subscriptions.push(
     vscode.languages.registerDocumentLinkProvider(
@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // 注册悬停提示提供者
+  // Register hover provider
   const hoverProvider = new LuaConfigHoverProvider();
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
@@ -43,13 +43,13 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // 注册装饰器提供者
+  // Register decoration provider
   decorationProvider = new LuaConfigDecorationProvider(context);
   context.subscriptions.push({
     dispose: () => decorationProvider?.dispose()
   });
 
-  // 注册命令：显示变量值
+  // Register command: show variable value
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'intelligentMarkdown.showVariableValue',
@@ -57,22 +57,22 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // 注册命令：刷新绑定
+  // Register command: refresh bindings
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'intelligentMarkdown.refreshBindings',
       () => {
-        vscode.window.showInformationMessage('正在刷新 Lua 绑定...');
+        vscode.window.showInformationMessage(vscode.l10n.t('Refreshing Lua bindings...'));
         if (vscode.window.activeTextEditor) {
           decorationProvider?.dispose();
           decorationProvider = new LuaConfigDecorationProvider(context);
         }
-        vscode.window.showInformationMessage('Lua 绑定已刷新');
+        vscode.window.showInformationMessage(vscode.l10n.t('Lua bindings refreshed'));
       }
     )
   );
 
-  // 注册命令：打开配置预览
+  // Register command: open config preview
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'intelligentMarkdown.openPreview',
@@ -80,11 +80,11 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // 监听 Lua 文件变化
+  // Watch Lua file changes
   const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
 
   luaWatcher.onDidChange(uri => {
-    console.log(`Lua 文件已修改: ${uri.fsPath}`);
+    console.log(`Lua file modified: ${uri.fsPath}`);
     if (decorationProvider) {
       decorationProvider.dispose();
       decorationProvider = new LuaConfigDecorationProvider(context);
@@ -93,7 +93,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(luaWatcher);
 
-  // 监听文档打开，自动显示预览
+  // Watch document open for auto preview
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor) {
@@ -102,28 +102,28 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  // 如果当前已经有打开的 Markdown 文件，检查是否需要自动打开预览
+  // If a Markdown file is already open, check auto-open preview
   if (vscode.window.activeTextEditor) {
     handleAutoOpenPreview(context, vscode.window.activeTextEditor.document);
   }
 
-  // 输出激活信息
-  vscode.window.showInformationMessage('Intelligent Markdown for Lua 已启动');
+  // Show activation message
+  vscode.window.showInformationMessage(vscode.l10n.t('Intelligent Markdown for Lua activated'));
 }
 
 /**
- * 处理自动打开预览
+ * Handle auto-open preview
  */
 async function handleAutoOpenPreview(
   context: vscode.ExtensionContext,
   document: vscode.TextDocument
 ): Promise<void> {
-  // 检查是否是 Markdown 文件
+  // Check if it's a Markdown file
   if (document.languageId !== 'markdown') {
     return;
   }
 
-  // 读取配置
+  // Read configuration
   const config = vscode.workspace.getConfiguration('intelligentMarkdown');
   const autoOpenPreview = config.get<boolean>('autoOpenPreview', false);
 
@@ -131,15 +131,15 @@ async function handleAutoOpenPreview(
     return;
   }
 
-  // 检查文件匹配模式
+  // Check file match pattern
   const pattern = config.get<string>('autoOpenPreviewPattern', '**/*.config.md');
   
-  // 使用简单的 glob 匹配
+  // Simple glob matching
   if (!matchGlobPattern(document.uri.fsPath, pattern)) {
     return;
   }
 
-  // 检查是否需要包含 lua-config 块
+  // Check if lua-config blocks are required
   const onlyWithLuaConfig = config.get<boolean>('autoOpenPreviewOnlyWithLuaConfig', true);
   
   if (onlyWithLuaConfig) {
@@ -149,46 +149,46 @@ async function handleAutoOpenPreview(
     }
   }
 
-  // 如果当前面板已经在显示同一文档，跳过
+  // If current panel is already showing the same document, skip
   if (currentPreviewPanel && currentPreviewDocUri === document.uri.toString()) {
     return;
   }
 
-  // 延迟一下打开预览，让编辑器先完成加载
+  // Delay opening to let editor finish loading
   setTimeout(() => {
     openPreviewForDocument(context, document);
   }, 300);
 }
 
 /**
- * 简单的 glob 模式匹配
+ * Simple glob pattern matching
  */
 function matchGlobPattern(filePath: string, pattern: string): boolean {
-  // 标准化路径
+  // Normalize paths
   const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
   const normalizedPattern = pattern.replace(/\\/g, '/').toLowerCase();
 
-  // 如果模式是 ** 开头，匹配任意路径
+  // If pattern starts with **, match any path
   if (normalizedPattern.startsWith('**/')) {
     const suffix = normalizedPattern.slice(3);
     return matchSimplePattern(normalizedPath, suffix);
   }
 
-  // 如果模式是 *.xxx，匹配文件扩展名
+  // If pattern is *.xxx, match file extension
   if (normalizedPattern.startsWith('*.')) {
     const ext = normalizedPattern.slice(1);
     return normalizedPath.endsWith(ext);
   }
 
-  // 简单匹配
+  // Simple match
   return matchSimplePattern(normalizedPath, normalizedPattern);
 }
 
 /**
- * 简单模式匹配（支持 * 和 ?）
+ * Simple pattern matching (supports * and ?)
  */
 function matchSimplePattern(str: string, pattern: string): boolean {
-  // 将 glob 转换为正则表达式
+  // Convert glob to regex
   const regexPattern = pattern
     .replace(/\./g, '\\.')
     .replace(/\*\*/g, '.*')
@@ -200,7 +200,7 @@ function matchSimplePattern(str: string, pattern: string): boolean {
 }
 
 /**
- * 为指定文档打开预览（复用现有面板）
+ * Open preview for a specific document (reuse existing panel)
  */
 async function openPreviewForDocument(
   context: vscode.ExtensionContext,
@@ -208,26 +208,26 @@ async function openPreviewForDocument(
 ): Promise<void> {
   const docUri = document.uri.toString();
 
-  // 如果当前面板已经在显示同一文档，直接 reveal 即可
+  // If current panel is showing the same document, just reveal
   if (currentPreviewPanel && currentPreviewDocUri === docUri) {
     currentPreviewPanel.reveal(undefined, true);
     return;
   }
 
-  // 确定目标列：如果已有面板，复用其所在列；否则使用 Beside
+  // Determine target column: reuse existing or Beside
   let targetColumn = vscode.ViewColumn.Beside;
   if (currentPreviewPanel) {
     targetColumn = currentPreviewPanel.viewColumn || vscode.ViewColumn.Beside;
-    // 销毁旧面板以释放资源（监听器等会在 onDidDispose 中清理）
+    // Dispose old panel to release resources
     currentPreviewPanel.dispose();
     currentPreviewPanel = undefined;
     currentPreviewDocUri = undefined;
   }
 
-  // 创建新的 Webview 面板，复用之前的列位置
+  // Create new Webview panel, reuse previous column position
   const panel = vscode.window.createWebviewPanel(
     'intelligentMarkdown.preview',
-    `配置预览: ${path.basename(document.fileName)}`,
+    vscode.l10n.t('Config Preview: {0}', path.basename(document.fileName)),
     { viewColumn: targetColumn, preserveFocus: true },
     {
       enableScripts: true,
@@ -236,11 +236,11 @@ async function openPreviewForDocument(
     }
   );
 
-  // 更新跟踪引用
+  // Update tracking references
   currentPreviewPanel = panel;
   currentPreviewDocUri = docUri;
 
-  // 监听面板关闭，清理引用
+  // Watch panel close, clean up references
   panel.onDidDispose(() => {
     if (currentPreviewPanel === panel) {
       currentPreviewPanel = undefined;
@@ -248,7 +248,7 @@ async function openPreviewForDocument(
     }
   });
 
-  // 使用 SmartMarkdownEditorProvider 的逻辑
+  // Use SmartMarkdownEditorProvider logic
   const editorProvider = new SmartMarkdownEditorProvider(context);
   await editorProvider.resolveCustomTextEditor(
     document,
@@ -258,29 +258,29 @@ async function openPreviewForDocument(
 }
 
 /**
- * 打开预览面板（手动命令，复用现有面板）
+ * Open preview panel (manual command, reuse existing panel)
  */
 async function openPreviewPanel(context: vscode.ExtensionContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
 
   if (!editor) {
-    vscode.window.showWarningMessage('请先打开一个 Markdown 文件');
+    vscode.window.showWarningMessage(vscode.l10n.t('Please open a Markdown file first'));
     return;
   }
 
   if (editor.document.languageId !== 'markdown') {
-    vscode.window.showWarningMessage('当前文件不是 Markdown 文件');
+    vscode.window.showWarningMessage(vscode.l10n.t('Current file is not a Markdown file'));
     return;
   }
 
-  // 直接复用 openPreviewForDocument 的面板复用逻辑
+  // Reuse openPreviewForDocument panel reuse logic
   await openPreviewForDocument(context, editor.document);
 }
 
 /**
- * 插件停用
+ * Extension deactivation
  */
 export function deactivate(): void {
-  console.log('Intelligent Markdown for Lua 已停用');
+  console.log('Intelligent Markdown for Lua deactivated');
   decorationProvider?.dispose();
 }

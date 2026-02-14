@@ -1,6 +1,6 @@
 /**
- * Lua 文件链接器
- * 管理 Markdown 配置块与 Lua 文件的关联
+ * Lua file linker
+ * Manages association between Markdown config blocks and Lua files
  */
 
 import * as vscode from 'vscode';
@@ -10,23 +10,23 @@ import { LuaParser } from '../parser/luaParser';
 import { PathResolver } from './pathResolver';
 
 export interface LinkedConfigBlock extends ParsedConfigBlock {
-  /** 解析后的绝对文件路径 */
+  /** Parsed absolute file path */
   absoluteFilePath: string;
-  /** 当前从 Lua 读取的值 */
+  /** Current value read from Lua */
   currentValue: any;
-  /** Lua 值节点信息 */
+  /** Lua value node info */
   luaNode?: {
     range: [number, number];
     loc: {
       start: { line: number; column: number };
       end: { line: number; column: number };
     };
-    /** table 类型的详细数据（包含每个字段的 range） */
+    /** Table type detailed data (includes range for each field) */
     tableData?: Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }>;
   };
-  /** 链接状态 */
+  /** Link status */
   linkStatus: 'ok' | 'file-not-found' | 'key-not-found' | 'parse-error';
-  /** 错误信息 */
+  /** Error message */
   linkError?: string;
 }
 
@@ -40,9 +40,9 @@ export class LuaLinker {
   }
 
   /**
-   * 链接配置块到 Lua 文件
-   * @param blocks 解析出的配置块
-   * @param markdownPath Markdown 文件路径
+   * Link config blocks to Lua files
+   * @param blocks Parsed config blocks
+   * @param markdownPath Markdown file path
    */
   async linkBlocks(blocks: ParsedConfigBlock[], markdownPath: string): Promise<LinkedConfigBlock[]> {
     const markdownDir = this.pathResolver.dirname(markdownPath);
@@ -57,13 +57,13 @@ export class LuaLinker {
   }
 
   /**
-   * 链接单个配置块
+   * Link a single config block
    */
   private async linkSingleBlock(block: ParsedConfigBlock, baseDir: string): Promise<LinkedConfigBlock> {
-    // 解析 Lua 文件路径
+    // Resolve Lua file path
     const absolutePath = this.pathResolver.resolve(baseDir, block.file);
 
-    // 创建基础链接块
+    // Create base linked block
     const linkedBlock: LinkedConfigBlock = {
       ...block,
       absoluteFilePath: absolutePath,
@@ -71,30 +71,30 @@ export class LuaLinker {
       linkStatus: 'ok'
     };
 
-    // 检查文件是否存在
+    // Check if file exists
     if (!fs.existsSync(absolutePath)) {
       linkedBlock.linkStatus = 'file-not-found';
-      linkedBlock.linkError = `文件不存在: ${absolutePath}`;
+      linkedBlock.linkError = vscode.l10n.t('File not found: {0}', absolutePath);
       return linkedBlock;
     }
 
     try {
-      // 获取或创建解析器
+      // Get or create parser
       const parser = await this.getParser(absolutePath);
 
-      // 根据类型选择查找方法
+      // Choose find method based on type
       const result = block.type === 'code'
         ? parser.findFunctionByFullPath(block.key)
         : parser.findNodeByPath(block.key);
 
       if (!result.success || !result.node) {
         linkedBlock.linkStatus = 'key-not-found';
-        linkedBlock.linkError = result.error || `找不到变量: ${block.key}`;
+        linkedBlock.linkError = result.error || vscode.l10n.t('Variable not found: {0}', block.key);
         return linkedBlock;
       }
 
-      // 填充值和位置信息
-      // code 类型使用 raw 源码文本，其他类型使用解析后的值
+      // Populate value and location info
+      // code type uses raw source text, other types use parsed value
       linkedBlock.currentValue = block.type === 'code'
         ? (result.node.raw || '')
         : result.node.value;
@@ -103,7 +103,7 @@ export class LuaLinker {
         loc: result.node.loc
       };
 
-      // 如果是 table 类型，提取详细的表格数组数据（需要原始 AST 节点）
+      // For table type, extract detailed table array data (needs raw AST node)
       if (block.type === 'table' && result.astNode && result.astNode.type === 'TableConstructorExpression') {
         const tableData = parser.extractTableArray(result.astNode);
         if (tableData) {
@@ -115,37 +115,37 @@ export class LuaLinker {
 
     } catch (error) {
       linkedBlock.linkStatus = 'parse-error';
-      linkedBlock.linkError = `解析错误: ${error instanceof Error ? error.message : String(error)}`;
+      linkedBlock.linkError = vscode.l10n.t('Parse error: {0}', error instanceof Error ? error.message : String(error));
     }
 
     return linkedBlock;
   }
 
   /**
-   * 获取 Lua 文件的解析器（带缓存）
+   * Get Lua file parser (with cache)
    */
   private async getParser(filePath: string): Promise<LuaParser> {
     const stats = fs.statSync(filePath);
     const mtime = stats.mtimeMs;
 
-    // 检查缓存
+    // Check cache
     const cached = this.luaFileCache.get(filePath);
     if (cached && cached.mtime === mtime) {
       return cached.parser;
     }
 
-    // 读取并解析文件
+    // Read and parse file
     const content = fs.readFileSync(filePath, 'utf-8');
     const parser = new LuaParser(content);
 
-    // 更新缓存
+    // Update cache
     this.luaFileCache.set(filePath, { content, parser, mtime });
 
     return parser;
   }
 
   /**
-   * 清除缓存
+   * Clear cache
    */
   clearCache(filePath?: string): void {
     if (filePath) {
@@ -156,7 +156,7 @@ export class LuaLinker {
   }
 
   /**
-   * 刷新指定文件的缓存
+   * Refresh cache for a specific file
    */
   async refreshCache(filePath: string): Promise<void> {
     this.clearCache(filePath);
@@ -166,7 +166,7 @@ export class LuaLinker {
   }
 
   /**
-   * 获取 Lua 文件中变量的位置（用于跳转）
+   * Get variable location in Lua file (for navigation)
    */
   getVariableLocation(linkedBlock: LinkedConfigBlock): vscode.Location | null {
     if (linkedBlock.linkStatus !== 'ok' || !linkedBlock.luaNode) {

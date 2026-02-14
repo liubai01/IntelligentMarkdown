@@ -1,88 +1,88 @@
 /**
- * 配置块类型定义
+ * Config block type definitions
  */
 
-/** 支持的控件类型 */
+/** Supported control types */
 export type ConfigType = 'number' | 'slider' | 'string' | 'boolean' | 'select' | 'color' | 'array' | 'table' | 'code';
 
-/** 选项项 */
-export interface SelectOption {
-  value: string | number;
+/** Option item */
+export interface OptionItem {
   label: string;
+  value: string | number;
 }
 
-/** 表格列定义 */
+/** Table column definition */
 export interface TableColumn {
-  /** 列键名（对应 Lua table 字段） */
+  /** Column key (corresponds to Lua table field) */
   key: string;
-  /** 列显示标签 */
+  /** Column display label */
   label: string;
-  /** 列类型 */
+  /** Column type */
   type: 'number' | 'string' | 'boolean' | 'select';
-  /** 数字类型的最小值 */
+  /** Min value for number type */
   min?: number;
-  /** 数字类型的最大值 */
+  /** Max value for number type */
   max?: number;
-  /** 数字类型的步进值 */
+  /** Step value for number type */
   step?: number;
-  /** select 类型的选项 */
-  options?: SelectOption[];
-  /** 是否只读 */
+  /** Options for select type */
+  options?: OptionItem[];
+  /** Whether readonly */
   readonly?: boolean;
-  /** 列宽度（CSS） */
+  /** Column width (CSS) */
   width?: string;
 }
 
-/** 配置块定义 */
+/** Config block definition */
 export interface ConfigBlock {
-  /** Lua 文件相对路径 */
+  /** Lua file relative path */
   file: string;
-  /** Lua 变量路径 */
+  /** Lua variable path */
   key: string;
-  /** 控件类型 */
+  /** Control type */
   type: ConfigType;
-  /** 显示标签 */
+  /** Display label */
   label?: string;
-  /** 默认值 */
+  /** Default value */
   default?: any;
-  /** 最小值 */
+  /** Min value */
   min?: number;
-  /** 最大值 */
+  /** Max value */
   max?: number;
-  /** 范围 [min, max] */
+  /** Range [min, max] */
   range?: [number, number];
-  /** 步进值 */
+  /** Step value */
   step?: number;
-  /** 选项列表 */
-  options?: SelectOption[];
-  /** 单位 */
+  /** Options list */
+  options?: OptionItem[];
+  /** Unit */
   unit?: string;
-  /** 是否只读 */
+  /** Whether readonly */
   readonly?: boolean;
-  /** table 类型的列定义 */
+  /** Table columns definition */
   columns?: TableColumn[];
 }
 
-/** 解析后的配置块（带位置信息） */
+/** Parsed config block (with position info) */
 export interface ParsedConfigBlock extends ConfigBlock {
-  /** 在 Markdown 中的起始行号 */
+  /** Start line number in Markdown */
   startLine: number;
-  /** 在 Markdown 中的结束行号 */
+  /** End line number in Markdown */
   endLine: number;
-  /** 原始文本 */
+  /** Raw text */
   rawText: string;
-  /** 当前从 Lua 读取的值 */
+  /** Current value read from Lua */
   currentValue?: any;
-  /** 解析后的绝对文件路径 */
+  /** Parsed absolute file path */
   absoluteFilePath?: string;
 }
 
-/** 配置块解析结果 */
+/** Config block parse result */
 export interface ConfigBlockParseResult {
-  /** 是否解析成功 */
+  /** Whether parsing succeeded */
   success: boolean;
-  /** 解析出的配置块 */
+  /** Parsed config block */
   block?: ConfigBlock;
-  /** 错误信息 */
+  /** Error message */
   error?: string;
 }

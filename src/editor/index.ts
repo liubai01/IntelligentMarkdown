@@ -1,5 +1,5 @@
 /**
- * 编辑器模块导出
+ * Editor module export
  */
 
 export { SmartMarkdownEditorProvider } from './smartMarkdownEditor';

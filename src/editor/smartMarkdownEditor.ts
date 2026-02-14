@@ -1,6 +1,6 @@
 /**
- * 智能 Markdown 编辑器
- * 基于 Webview 的可视化配置预览编辑器
+ * Smart Markdown Editor
+ * Visual config preview editor based on Webview
  */
 
 import * as vscode from 'vscode';
@@ -19,7 +19,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private configParser: ConfigBlockParser;
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
-  /** 代码块缩进归一化缓存（每次渲染时重建） */
+  /** Code block indent normalization cache (rebuilt on each render) */
   private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -33,16 +33,16 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    // 配置 Webview
+    // Configure Webview
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri]
     };
 
-    // 初始渲染
+    // Initial render
     await this.updateWebview(document, webviewPanel.webview);
 
-    // 监听 Webview 消息
+    // Listen to Webview messages
     webviewPanel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.type) {
@@ -73,14 +73,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       this.context.subscriptions
     );
 
-    // 监听文档变化
+    // Listen to document changes
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) {
         this.updateWebview(document, webviewPanel.webview);
       }
     });
 
-    // 监听 Lua 文件变化
+    // Listen to Lua file changes
     const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
     luaWatcher.onDidChange(() => {
       this.luaLinker.clearCache();
@@ -94,7 +94,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 更新 Webview 内容
+   * Update Webview content
    */
   private async updateWebview(
     document: vscode.TextDocument,
@@ -108,7 +108,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 处理值更新
+   * Handle value update
    */
   private async handleUpdateValue(
     document: vscode.TextDocument,
@@ -123,38 +123,38 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         return;
       }
 
-      // 读取 Lua 文件
+      // Read Lua file
       const luaCode = fs.readFileSync(luaPath, 'utf-8');
 
-      // 解析并定位
+      // Parse and locate
       const parser = new LuaParser(luaCode);
       const result = parser.findNodeByPath(message.key);
 
       if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(`找不到变量: ${message.key}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
         return;
       }
 
-      // 生成新代码
+      // Generate new code
       const patcher = new LuaPatcher(luaCode);
       const newCode = patcher.updateValue(result.node, message.value);
 
-      // 写入文件
+      // Write file
       fs.writeFileSync(luaPath, newCode, 'utf-8');
 
-      // 清除缓存
+      // Clear cache
       this.luaLinker.clearCache(luaPath);
 
-      vscode.window.showInformationMessage(`已更新 ${message.key} = ${message.value}`);
+      vscode.window.showInformationMessage(vscode.l10n.t('Updated {0} = {1}', message.key, message.value));
     } catch (error) {
       vscode.window.showErrorMessage(
-        `更新失败: ${error instanceof Error ? error.message : String(error)}`
+        vscode.l10n.t('Update failed: {0}', error instanceof Error ? error.message : String(error))
       );
     }
   }
 
   /**
-   * 处理表格单元格更新
+   * Handle table cell update
    */
   private async handleUpdateTableCell(
     document: vscode.TextDocument,
@@ -169,35 +169,35 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         return;
       }
 
-      // 读取 Lua 文件
+      // Read Lua file
       const luaCode = fs.readFileSync(luaPath, 'utf-8');
 
-      // 解析并定位表格数组
+      // Parse and locate table array
       const parser = new LuaParser(luaCode);
       const result = parser.findNodeByPath(message.key);
 
       if (!result.success || !result.astNode) {
-        vscode.window.showErrorMessage(`找不到变量: ${message.key}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
         return;
       }
 
-      // 提取表格数组
+      // Extract table array
       const tableData = parser.extractTableArray(result.astNode);
       
       if (!tableData || message.rowIndex >= tableData.length) {
-        vscode.window.showErrorMessage(`无效的行索引: ${message.rowIndex}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
         return;
       }
 
-      // 获取目标单元格的范围
+      // Get target cell range
       const cellRange = tableData[message.rowIndex].ranges[message.colKey];
       
       if (!cellRange) {
-        vscode.window.showErrorMessage(`找不到字段: ${message.colKey}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', message.colKey));
         return;
       }
 
-      // 确定值类型
+      // Determine value type
       let valueType: 'number' | 'string' | 'boolean' = 'string';
       if (typeof message.value === 'number') {
         valueType = 'number';
@@ -205,28 +205,28 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         valueType = 'boolean';
       }
 
-      // 生成新代码
+      // Generate new code
       const patcher = new LuaPatcher(luaCode);
       const newCode = patcher.updateValueByRange(cellRange, message.value, valueType);
 
-      // 写入文件
+      // Write file
       fs.writeFileSync(luaPath, newCode, 'utf-8');
 
-      // 清除缓存
+      // Clear cache
       this.luaLinker.clearCache(luaPath);
 
       vscode.window.showInformationMessage(
-        `已更新表格 [${message.rowIndex}].${message.colKey} = ${message.value}`
+        vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)
       );
     } catch (error) {
       vscode.window.showErrorMessage(
-        `更新表格失败: ${error instanceof Error ? error.message : String(error)}`
+        vscode.l10n.t('Table update failed: {0}', error instanceof Error ? error.message : String(error))
       );
     }
   }
 
   /**
-   * 跳转到源码
+   * Jump to source
    */
   private async handleGotoSource(message: { file: string; line: number }): Promise<void> {
     try {
@@ -238,12 +238,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
     } catch (error) {
-      vscode.window.showErrorMessage(`无法打开文件`);
+      vscode.window.showErrorMessage(vscode.l10n.t('Unable to open file'));
     }
   }
 
   /**
-   * 处理语法高亮请求（来自 Webview）
+   * Handle syntax highlight request (from Webview)
    */
   private handleHighlightRequest(
     webview: vscode.Webview,
@@ -263,19 +263,19 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         html: highlighted
       });
     } catch {
-      // 静默失败，保留上次高亮
+      // Silent failure, keep last highlight
     }
   }
 
   /**
-   * 归一化缩进：提取非首行的公共缩进前缀并去除
-   * 首行保持不变（通常是 function 关键字，没有前导缩进）
+   * Normalize indentation: extract and remove common indent prefix from non-first lines
+   * First line unchanged (usually function keyword, no leading indent)
    */
   private normalizeIndentation(code: string): { normalized: string; baseIndent: string } {
     const lines = code.split('\n');
     if (lines.length <= 1) { return { normalized: code, baseIndent: '' }; }
 
-    // 找到第 2 行及之后非空行的最小缩进
+    // Find minimum indent of non-empty lines from line 2 onwards
     let minIndent = Infinity;
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
@@ -287,7 +287,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
     if (minIndent === 0 || minIndent === Infinity) { return { normalized: code, baseIndent: '' }; }
 
-    // 提取 baseIndent 实际字符串（保留 tab/space 原样）
+    // Extract baseIndent actual string (preserve tab/space as is)
     const refLine = lines.find((l, i) => i > 0 && l.trim() !== '');
     const baseIndent = refLine ? refLine.substring(0, minIndent) : ' '.repeat(minIndent);
 
@@ -301,7 +301,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 还原缩进
+   * Restore indentation
    */
   private denormalizeIndentation(code: string, baseIndent: string): string {
     if (!baseIndent) { return code; }
@@ -314,7 +314,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 从文件路径获取语言标识
+   * Get language from file path
    */
   private getLanguageFromFile(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -330,17 +330,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 生成 HTML 内容
+   * Generate HTML content
    */
   private getHtmlContent(
     webview: vscode.Webview,
     markdownText: string,
     linkedBlocks: LinkedConfigBlock[]
   ): string {
-    // 清除缩进归一化缓存
+    // Clear indent normalization cache
     this.codeNormCache.clear();
 
-    // 将 markdown 转换为 HTML，并替换配置块为控件
+    // Convert markdown to HTML and replace config blocks with controls
     const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks);
 
     return `<!DOCTYPE html>
@@ -349,7 +349,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'unsafe-inline';">
-  <title>配置预览</title>
+  <title>${vscode.l10n.t('Config Preview')}</title>
   <style>
     ${this.getStyles()}
   </style>
@@ -357,7 +357,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 <body>
   <div class="container">
     <div class="toolbar">
-      <button onclick="refresh()" title="刷新">🔄 刷新</button>
+      <button onclick="refresh()" title="${vscode.l10n.t('Refresh')}">🔄 ${vscode.l10n.t('Refresh')}</button>
     </div>
     <div class="content">
       ${htmlContent}
@@ -371,7 +371,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 渲染 Markdown 并替换配置块为控件
+   * Render Markdown and replace config blocks with controls
    */
   private renderMarkdownWithControls(
     markdownText: string,
@@ -379,7 +379,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   ): string {
     let html = markdownText;
 
-    // 第一步：用占位符替换配置块，避免 Markdown 转换影响 HTML
+    // Step 1: Replace config blocks with placeholders to avoid Markdown conversion affecting HTML
     const placeholders: Map<string, string> = new Map();
     for (let i = 0; i < linkedBlocks.length; i++) {
       const block = linkedBlocks[i];
@@ -389,10 +389,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       html = html.replace(block.rawText, placeholder);
     }
 
-    // 第二步：Markdown 转换
+    // Step 2: Markdown conversion
     html = this.simpleMarkdownToHtml(html);
 
-    // 第三步：将占位符替换回实际的 HTML 控件
+    // Step 3: Replace placeholders back to actual HTML controls
     for (const [placeholder, controlHtml] of placeholders) {
       html = html.replace(placeholder, controlHtml);
     }
@@ -401,7 +401,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 渲染配置控件
+   * Render config control
    */
   private renderConfigControl(block: LinkedConfigBlock): string {
     const statusClass = block.linkStatus === 'ok' ? 'status-ok' : 'status-error';
@@ -448,7 +448,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     <span class="status-icon">${statusIcon}</span>
     <span class="config-label">${label}</span>
     <span class="config-key" title="${block.key}">${block.key}</span>
-    ${block.linkStatus === 'ok' ? `<button class="goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="跳转到源码">📍</button>` : ''}
+    ${block.linkStatus === 'ok' ? `<button class="goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${vscode.l10n.t('Jump to source')}">📍</button>` : ''}
   </div>
   <div class="config-input">
     ${inputHtml}
@@ -458,7 +458,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * 渲染数字输入框
+   * Render number input
    */
   private renderNumberInput(block: LinkedConfigBlock, blockId: string): string {
     const min = block.min !== undefined ? `min="${block.min}"` : '';
@@ -479,11 +479,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   />
   <button class="num-btn plus" onclick="adjustNumber('${blockId}', 1)">+</button>
 </div>
-${block.min !== undefined && block.max !== undefined ? `<span class="range-hint">范围: ${block.min} ~ ${block.max}</span>` : ''}`;
+${block.min !== undefined && block.max !== undefined ? `<span class="range-hint">${vscode.l10n.t('Range: {0} ~ {1}', block.min, block.max)}</span>` : ''}`;
   }
 
   /**
-   * 渲染滑动条
+   * Render slider input
    */
   private renderSliderInput(block: LinkedConfigBlock, blockId: string): string {
     const min = block.min ?? 0;
@@ -513,7 +513,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染布尔开关
+   * Render boolean input
    */
   private renderBooleanInput(block: LinkedConfigBlock, blockId: string): string {
     const checked = block.currentValue ? 'checked' : '';
@@ -527,12 +527,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     onchange="updateValue('${blockId}')"
   />
   <span class="switch-slider"></span>
-  <span class="switch-label">${block.currentValue ? '开启' : '关闭'}</span>
+  <span class="switch-label">${block.currentValue ? vscode.l10n.t('ON') : vscode.l10n.t('OFF')}</span>
 </label>`;
   }
 
   /**
-   * 渲染字符串输入框
+   * Render string input
    */
   private renderStringInput(block: LinkedConfigBlock, blockId: string): string {
     const value = block.currentValue || '';
@@ -549,7 +549,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染下拉选择
+   * Render select input
    */
   private renderSelectInput(block: LinkedConfigBlock, blockId: string): string {
     const options = block.options || [];
@@ -567,26 +567,27 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染表格输入
+   * Render table input
    */
   private renderTableInput(block: LinkedConfigBlock, blockId: string): string {
+    const t = vscode.l10n.t;
     if (!block.columns || block.columns.length === 0) {
-      return `<span class="error-message">表格类型需要定义 columns</span>`;
+      return `<span class="error-message">${t('Table type requires columns definition')}</span>`;
     }
 
-    // 使用已经链接好的表格数据
+    // Use already linked table data
     const tableData = block.luaNode?.tableData;
     
     if (!tableData || tableData.length === 0) {
-      return `<div class="table-empty">暂无数据</div>`;
+      return `<div class="table-empty">${t('No data')}</div>`;
     }
 
-    // 生成表头
+    // Generate table header
     const headerCells = block.columns.map(col => 
       `<th style="${col.width ? `width: ${col.width};` : ''}">${col.label}</th>`
     ).join('');
 
-    // 生成表格行
+    // Generate table rows
     const rows = tableData.map((row, rowIndex) => {
       const cells = block.columns!.map(col => {
         const cellId = `${blockId}-${rowIndex}-${col.key}`;
@@ -637,12 +638,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 渲染代码编辑控件（overlay 高亮 + textarea 编辑 + 缩进归一化）
+   * Render code input (overlay highlight + textarea edit + indent normalization)
    */
   private renderCodeInput(block: LinkedConfigBlock, blockId: string): string {
+    const t = vscode.l10n.t;
     const functionSource = block.currentValue || '-- No function found';
 
-    // 缩进归一化
+    // Indent normalization
     const { normalized, baseIndent } = this.normalizeIndentation(functionSource);
     this.codeNormCache.set(blockId, { normalized, baseIndent });
 
@@ -650,7 +652,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     const lineCount = normalized.split('\n').length;
     const rows = Math.max(6, Math.min(lineCount + 1, 30));
 
-    // 语法高亮（服务端预渲染）
+    // Syntax highlighting (server-side pre-render)
     const lang = this.getLanguageFromFile(block.absoluteFilePath);
     let highlightedHtml: string;
     try {
@@ -662,16 +664,16 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     return `
 <div class="code-wrapper">
   <div class="code-modified-hint" id="${blockId}-modified" style="display:none;">
-    ⚠️ 内容已修改，可以保存
+    ⚠️ ${t('Content modified, ready to save')}
   </div>
   <div class="code-toolbar">
-    <button class="code-btn code-save-btn" onclick="saveCode('${blockId}')" title="保存修改到源文件">
-      💾 保存
+    <button class="code-btn code-save-btn" onclick="saveCode('${blockId}')" title="${t('Save changes to source file')}">
+      💾 ${t('Save')}
     </button>
-    <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="重置为原始代码">
-      ↩️ 重置
+    <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="${t('Reset to original code')}">
+      ↩️ ${t('Reset')}
     </button>
-    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="跳转到源文件函数">📍 跳转源码</button>` : ''}
+    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
   <div class="code-overlay-container" id="${blockId}-container">
     <pre class="code-highlight-pre" id="${blockId}-pre" aria-hidden="true"><code class="hljs" id="${blockId}-highlight">${highlightedHtml}</code></pre>
@@ -689,7 +691,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 处理代码保存：从 webview 接收归一化后的代码，还原缩进后写回源文件
+   * Handle code save: receive normalized code from webview, restore indent and write back to source file
    */
   private async handleSaveCode(
     document: vscode.TextDocument,
@@ -704,44 +706,44 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         return;
       }
 
-      // 重新解析源文件以获取函数的当前范围
+      // Reparse source file to get current function range
       const luaCode = fs.readFileSync(luaPath, 'utf-8');
       const parser = new LuaParser(luaCode);
       const result = parser.findFunctionByFullPath(message.key);
 
       if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(`在源文件中找不到函数 ${message.key}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Function {0} not found in source file', message.key));
         return;
       }
 
-      // 还原缩进：将归一化的代码恢复原始缩进
+      // Restore indent: recover normalized code to original indentation
       const restoredCode = this.denormalizeIndentation(message.code, message.baseIndent || '');
 
-      // 精准替换：只替换函数部分，保留前后所有内容
+      // Precise replacement: only replace function part, preserve all other content
       const before = luaCode.substring(0, result.node.range[0]);
       const after = luaCode.substring(result.node.range[1]);
       const newCode = before + restoredCode + after;
 
-      // 写入源文件
+      // Write source file
       fs.writeFileSync(luaPath, newCode, 'utf-8');
 
-      // 清除缓存
+      // Clear cache
       this.luaLinker.clearCache(luaPath);
 
-      vscode.window.showInformationMessage(`已保存 ${message.key}`);
+      vscode.window.showInformationMessage(vscode.l10n.t('Saved {0}', message.key));
     } catch (error) {
       vscode.window.showErrorMessage(
-        `保存失败: ${error instanceof Error ? error.message : String(error)}`
+        vscode.l10n.t('Save failed: {0}', error instanceof Error ? error.message : String(error))
       );
     }
   }
 
   /**
-   * 简单的 Markdown 转 HTML
-   * 更紧凑的排版，避免过多空行
+   * Simple Markdown to HTML
+   * More compact layout, avoid excessive blank lines
    */
   private simpleMarkdownToHtml(text: string): string {
-    // 将文本按行分割处理
+    // Split text by lines for processing
     const lines = text.split('\n');
     const result: string[] = [];
     let inBlockquote = false;
@@ -823,7 +825,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 处理行内 Markdown 语法
+   * Process inline Markdown syntax
    */
   private processInlineMarkdown(text: string): string {
     return text
@@ -836,14 +838,14 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 生成块 ID
+   * Generate block ID
    */
   private generateBlockId(block: LinkedConfigBlock): string {
     return `block-${block.key.replace(/\./g, '-').replace(/\[|\]/g, '_')}`;
   }
 
   /**
-   * 格式化值
+   * Format value
    */
   private formatValue(value: any): string {
     if (value === null || value === undefined) {
@@ -856,7 +858,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * HTML 转义
+   * HTML escape
    */
   private escapeHtml(text: string): string {
     return text
@@ -868,7 +870,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 获取样式 - 基于 GitHub Markdown 风格
+   * Get styles - based on GitHub Markdown style
    */
   private getStyles(): string {
     return `
@@ -1593,10 +1595,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * 获取脚本
+   * Get script
    */
   private getScript(linkedBlocks: LinkedConfigBlock[]): string {
-    // 创建块数据映射（包含代码块的归一化信息）
+    // Create block data mapping (including code block normalization info)
     const blockDataMap: Record<string, any> = {};
     for (const block of linkedBlocks) {
       const blockId = this.generateBlockId(block);
@@ -1641,7 +1643,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (input.type === 'checkbox') {
           value = input.checked;
           const label = input.closest('.switch').querySelector('.switch-label');
-          if (label) label.textContent = value ? '开启' : '关闭';
+          if (label) label.textContent = value ? 'ON' : 'OFF';
         } else if (input.type === 'number' || input.type === 'range') {
           value = parseFloat(input.value);
           if (isNaN(value)) return;

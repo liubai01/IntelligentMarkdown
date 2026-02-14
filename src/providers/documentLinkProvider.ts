@@ -1,6 +1,6 @@
 /**
- * 文档链接提供者
- * 在 Markdown 中为 lua-config 代码块提供可点击的链接
+ * Document link provider
+ * Provides clickable links for lua-config code blocks in Markdown
  */
 
 import * as vscode from 'vscode';
@@ -30,24 +30,24 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
     const links: vscode.DocumentLink[] = [];
     const text = document.getText();
 
-    // 解析配置块
+    // Parse config blocks
     const blocks = this.configParser.parseMarkdown(text);
     if (blocks.length === 0) {
       return [];
     }
 
-    // 链接到 Lua 文件
+    // Link to Lua files
     const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
 
-    // 为每个配置块创建链接
+    // Create links for each config block
     for (const linkedBlock of linkedBlocks) {
-      // 创建 file 字段的链接
+      // Create file field link
       const fileLink = this.createFileLinkForBlock(document, linkedBlock);
       if (fileLink) {
         links.push(fileLink);
       }
 
-      // 创建 key 字段的链接（跳转到具体行）
+      // Create key field link (jump to specific line)
       const keyLink = this.createKeyLinkForBlock(document, linkedBlock);
       if (keyLink) {
         links.push(keyLink);
@@ -58,19 +58,19 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
   }
 
   /**
-   * 为 file 字段创建链接
+   * Create link for file field
    */
   private createFileLinkForBlock(
     document: vscode.TextDocument,
     linkedBlock: LinkedConfigBlock
   ): vscode.DocumentLink | null {
-    // 在原始文本中查找 file: 行
+    // Find file: line in raw text
     const fileLineMatch = linkedBlock.rawText.match(/file:\s*(.+)/);
     if (!fileLineMatch) {
       return null;
     }
 
-    // 计算 file 路径在文档中的位置
+    // Calculate file path position in document
     const blockStartOffset = document.getText().indexOf(linkedBlock.rawText);
     if (blockStartOffset === -1) {
       return null;
@@ -84,21 +84,21 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
 
     const range = new vscode.Range(startPos, endPos);
 
-    // 创建链接
+    // Create link
     if (linkedBlock.linkStatus === 'file-not-found') {
-      // 文件不存在时，链接到创建文件的命令
-      return undefined as any; // 不提供链接
+      // No link when file doesn't exist
+      return undefined as any;
     }
 
     const targetUri = vscode.Uri.file(linkedBlock.absoluteFilePath);
     const link = new vscode.DocumentLink(range, targetUri);
-    link.tooltip = `打开 ${linkedBlock.absoluteFilePath}`;
+    link.tooltip = vscode.l10n.t('Open {0}', linkedBlock.absoluteFilePath);
 
     return link;
   }
 
   /**
-   * 为 key 字段创建链接（跳转到 Lua 文件的具体位置）
+   * Create link for key field (jump to specific position in Lua file)
    */
   private createKeyLinkForBlock(
     document: vscode.TextDocument,
@@ -108,13 +108,13 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
       return null;
     }
 
-    // 在原始文本中查找 key: 行
+    // Find key: line in raw text
     const keyLineMatch = linkedBlock.rawText.match(/key:\s*(.+)/);
     if (!keyLineMatch) {
       return null;
     }
 
-    // 计算 key 路径在文档中的位置
+    // Calculate key path position in document
     const blockStartOffset = document.getText().indexOf(linkedBlock.rawText);
     if (blockStartOffset === -1) {
       return null;
@@ -128,19 +128,20 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
 
     const range = new vscode.Range(startPos, endPos);
 
-    // 创建带有行号的 URI
+    // Create URI with line number
     const targetUri = vscode.Uri.file(linkedBlock.absoluteFilePath).with({
       fragment: `L${linkedBlock.luaNode.loc.start.line}`
     });
 
     const link = new vscode.DocumentLink(range, targetUri);
-    link.tooltip = `跳转到 ${linkedBlock.key} (第 ${linkedBlock.luaNode.loc.start.line} 行)\n当前值: ${JSON.stringify(linkedBlock.currentValue)}`;
+    link.tooltip = vscode.l10n.t('Jump to {0} (Line {1})', linkedBlock.key, linkedBlock.luaNode.loc.start.line) +
+      `\n${vscode.l10n.t('Current value: {0}', JSON.stringify(linkedBlock.currentValue))}`;
 
     return link;
   }
 
   /**
-   * 解析链接（可选，用于延迟解析）
+   * Resolve link (optional, for lazy resolution)
    */
   resolveDocumentLink(
     link: vscode.DocumentLink,

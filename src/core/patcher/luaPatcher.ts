@@ -1,6 +1,6 @@
 /**
- * Lua 文件修补器
- * 精准替换 Lua 文件中的值，保留注释和格式
+ * Lua file patcher
+ * Precisely replaces values in Lua files while preserving comments and formatting
  */
 
 import { LuaValueNode, LuaValueType } from '../../types';
@@ -13,15 +13,15 @@ export class LuaPatcher {
   }
 
   /**
-   * 更新指定节点的值
-   * @param node 目标节点
-   * @param newValue 新值
-   * @returns 更新后的完整源码
+   * Update the value of a specified node
+   * @param node Target node
+   * @param newValue New value
+   * @returns Updated full source code
    */
   updateValue(node: LuaValueNode, newValue: any): string {
     const formattedValue = this.formatLuaValue(newValue, node.type);
 
-    // 精准替换：只替换值的部分，保留所有其他内容
+    // Precise replacement: only replace the value part, preserve everything else
     const before = this.sourceCode.substring(0, node.range[0]);
     const after = this.sourceCode.substring(node.range[1]);
 
@@ -29,11 +29,11 @@ export class LuaPatcher {
   }
 
   /**
-   * 更新指定范围的值
-   * @param range 字符范围
-   * @param newValue 新值
-   * @param valueType 值类型
-   * @returns 更新后的完整源码
+   * Update value by range
+   * @param range Character range
+   * @param newValue New value
+   * @param valueType Value type
+   * @returns Updated full source code
    */
   updateValueByRange(range: [number, number], newValue: any, valueType: LuaValueType): string {
     const formattedValue = this.formatLuaValue(newValue, valueType);
@@ -45,7 +45,7 @@ export class LuaPatcher {
   }
 
   /**
-   * 将 JavaScript 值转换为 Lua 格式
+   * Convert JavaScript value to Lua format
    */
   formatLuaValue(value: any, type: LuaValueType): string {
     if (value === null || value === undefined) {
@@ -69,25 +69,25 @@ export class LuaPatcher {
   }
 
   /**
-   * 格式化数字
+   * Format number
    */
   private formatNumber(value: any): string {
     const num = Number(value);
     if (isNaN(num)) {
-      throw new Error(`无效的数字: ${value}`);
+      throw new Error(`Invalid number: ${value}`);
     }
 
-    // 保持整数格式
+    // Keep integer format
     if (Number.isInteger(num)) {
       return String(num);
     }
 
-    // 浮点数保持合理精度
+    // Floating point with reasonable precision
     return String(num);
   }
 
   /**
-   * 格式化字符串
+   * Format string
    */
   private formatString(value: any): string {
     const str = String(value);
@@ -95,7 +95,7 @@ export class LuaPatcher {
   }
 
   /**
-   * 转义 Lua 字符串中的特殊字符
+   * Escape special characters in Lua string
    */
   private escapeLuaString(str: string): string {
     return str
@@ -108,17 +108,17 @@ export class LuaPatcher {
   }
 
   /**
-   * 格式化 Table（简单形式，用于简单数组或对象）
+   * Format Table (simple form, for simple arrays or objects)
    */
   private formatTable(value: any): string {
     if (Array.isArray(value)) {
-      // 数组格式
+      // Array format
       const items = value.map(item => this.formatAutoType(item));
       return `{ ${items.join(', ')} }`;
     }
 
     if (typeof value === 'object') {
-      // 对象格式
+      // Object format
       const entries = Object.entries(value).map(([key, val]) => {
         const formattedKey = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)
           ? key
@@ -132,7 +132,7 @@ export class LuaPatcher {
   }
 
   /**
-   * 自动检测类型并格式化
+   * Auto-detect type and format
    */
   private formatAutoType(value: any): string {
     if (value === null || value === undefined) {
@@ -154,7 +154,7 @@ export class LuaPatcher {
   }
 
   /**
-   * 获取源码
+   * Get source code
    */
   getSourceCode(): string {
     return this.sourceCode;

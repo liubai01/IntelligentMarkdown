@@ -42,6 +42,7 @@
     "onCommand:intelligentMarkdown.refreshBindings",
     "onCommand:intelligentMarkdown.openPreview"
   ],
+  "l10n": "./l10n",
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [

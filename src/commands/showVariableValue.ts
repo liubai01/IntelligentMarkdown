@@ -1,6 +1,6 @@
 /**
- * 显示 Lua 变量值命令
- * 在命令面板中选择配置块并显示详细信息
+ * Show Lua variable value command
+ * Select a config block from command palette and display details
  */
 
 import * as vscode from 'vscode';
@@ -11,12 +11,12 @@ export async function showVariableValueCommand(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
 
   if (!editor) {
-    vscode.window.showWarningMessage('请先打开一个 Markdown 文件');
+    vscode.window.showWarningMessage(vscode.l10n.t('Please open a Markdown file first'));
     return;
   }
 
   if (editor.document.languageId !== 'markdown') {
-    vscode.window.showWarningMessage('当前文件不是 Markdown 文件');
+    vscode.window.showWarningMessage(vscode.l10n.t('Current file is not a Markdown file'));
     return;
   }
 
@@ -27,51 +27,50 @@ export async function showVariableValueCommand(): Promise<void> {
   const blocks = configParser.parseMarkdown(text);
 
   if (blocks.length === 0) {
-    vscode.window.showInformationMessage('当前文档中没有找到 lua-config 配置块');
+    vscode.window.showInformationMessage(vscode.l10n.t('No lua-config blocks found in current document'));
     return;
   }
 
-  // 链接到 Lua 文件
+  // Link to Lua files
   const linkedBlocks = await luaLinker.linkBlocks(blocks, editor.document.uri.fsPath);
 
-  // 创建选择项
+  // Create selection items
   const items: vscode.QuickPickItem[] = linkedBlocks.map(block => {
     const statusIcon = block.linkStatus === 'ok' ? '✅' : '❌';
     const valueText = block.linkStatus === 'ok'
       ? formatValue(block.currentValue)
-      : block.linkError || '错误';
+      : block.linkError || vscode.l10n.t('Error');
 
     return {
       label: `${statusIcon} ${block.key}`,
       description: `${block.type} | ${block.file}`,
-      detail: `当前值: ${valueText}`,
-      // 存储额外数据
+      detail: vscode.l10n.t('Current value: {0}', valueText),
       alwaysShow: true
     } as vscode.QuickPickItem & { block: LinkedConfigBlock };
   });
 
-  // 显示快速选择
+  // Show quick pick
   const selected = await vscode.window.showQuickPick(items, {
-    title: 'Lua 变量绑定',
-    placeHolder: '选择一个配置查看详情或跳转',
+    title: vscode.l10n.t('Lua Variable Bindings'),
+    placeHolder: vscode.l10n.t('Select a config to view details or navigate'),
     matchOnDescription: true,
     matchOnDetail: true
   });
 
   if (selected) {
-    // 找到对应的 block
+    // Find the corresponding block
     const index = items.indexOf(selected);
     const block = linkedBlocks[index];
 
     if (block.linkStatus === 'ok' && block.luaNode) {
-      // 提供操作选项
+      // Provide action options
       const action = await vscode.window.showQuickPick([
-        { label: '📍 跳转到 Lua 源码', action: 'goto' },
-        { label: '📋 复制当前值', action: 'copy' },
-        { label: '📝 查看详细信息', action: 'detail' }
+        { label: `📍 ${vscode.l10n.t('Jump to Lua Source')}`, action: 'goto' },
+        { label: `📋 ${vscode.l10n.t('Copy Current Value')}`, action: 'copy' },
+        { label: `📝 ${vscode.l10n.t('View Details')}`, action: 'detail' }
       ], {
         title: block.key,
-        placeHolder: '选择操作'
+        placeHolder: vscode.l10n.t('Choose action')
       });
 
       if (action) {
@@ -88,13 +87,13 @@ export async function showVariableValueCommand(): Promise<void> {
         }
       }
     } else {
-      vscode.window.showErrorMessage(`链接错误: ${block.linkError}`);
+      vscode.window.showErrorMessage(vscode.l10n.t('Link error: {0}', block.linkError || ''));
     }
   }
 }
 
 /**
- * 跳转到 Lua 源码
+ * Jump to Lua source
  */
 async function gotoLuaSource(block: LinkedConfigBlock): Promise<void> {
   if (!block.luaNode) {
@@ -118,7 +117,7 @@ async function gotoLuaSource(block: LinkedConfigBlock): Promise<void> {
 }
 
 /**
- * 复制值到剪贴板
+ * Copy value to clipboard
  */
 async function copyValue(block: LinkedConfigBlock): Promise<void> {
   const valueText = typeof block.currentValue === 'object'
@@ -126,16 +125,18 @@ async function copyValue(block: LinkedConfigBlock): Promise<void> {
     : String(block.currentValue);
 
   await vscode.env.clipboard.writeText(valueText);
-  vscode.window.showInformationMessage(`已复制: ${valueText.substring(0, 50)}${valueText.length > 50 ? '...' : ''}`);
+  vscode.window.showInformationMessage(vscode.l10n.t('Copied: {0}', valueText.substring(0, 50) + (valueText.length > 50 ? '...' : '')));
 }
 
 /**
- * 显示详细信息
+ * Show detail info
  */
 async function showDetailInfo(block: LinkedConfigBlock): Promise<void> {
+  const t = vscode.l10n.t;
+
   const panel = vscode.window.createWebviewPanel(
     'luaConfigDetail',
-    `配置详情: ${block.key}`,
+    t('Config Details: {0}', block.key),
     vscode.ViewColumn.Beside,
     {}
   );
@@ -156,18 +157,18 @@ async function showDetailInfo(block: LinkedConfigBlock): Promise<void> {
     <body>
       <h2>🔗 ${block.key}</h2>
       <table>
-        <tr><th>属性</th><th>值</th></tr>
-        <tr><td>文件</td><td><code>${block.absoluteFilePath}</code></td></tr>
-        <tr><td>变量路径</td><td><code>${block.key}</code></td></tr>
-        <tr><td>控件类型</td><td><code>${block.type}</code></td></tr>
-        <tr><td>标签</td><td>${block.label || '-'}</td></tr>
-        ${block.min !== undefined ? `<tr><td>最小值</td><td>${block.min}</td></tr>` : ''}
-        ${block.max !== undefined ? `<tr><td>最大值</td><td>${block.max}</td></tr>` : ''}
-        ${block.step !== undefined ? `<tr><td>步进</td><td>${block.step}</td></tr>` : ''}
-        ${block.unit ? `<tr><td>单位</td><td>${block.unit}</td></tr>` : ''}
-        <tr><td>位置</td><td>第 ${block.luaNode?.loc.start.line} 行, 第 ${block.luaNode?.loc.start.column} 列</td></tr>
+        <tr><th>${t('Property')}</th><th>${t('Value')}</th></tr>
+        <tr><td>${t('File')}</td><td><code>${block.absoluteFilePath}</code></td></tr>
+        <tr><td>${t('Variable Path')}</td><td><code>${block.key}</code></td></tr>
+        <tr><td>${t('Control Type')}</td><td><code>${block.type}</code></td></tr>
+        <tr><td>${t('Label')}</td><td>${block.label || '-'}</td></tr>
+        ${block.min !== undefined ? `<tr><td>${t('Min')}</td><td>${block.min}</td></tr>` : ''}
+        ${block.max !== undefined ? `<tr><td>${t('Max')}</td><td>${block.max}</td></tr>` : ''}
+        ${block.step !== undefined ? `<tr><td>${t('Step')}</td><td>${block.step}</td></tr>` : ''}
+        ${block.unit ? `<tr><td>${t('Unit')}</td><td>${block.unit}</td></tr>` : ''}
+        <tr><td>${t('Position')}</td><td>${t('Line {0}, Column {1}', block.luaNode?.loc.start.line ?? '', block.luaNode?.loc.start.column ?? '')}</td></tr>
       </table>
-      <h3>当前值</h3>
+      <h3>${t('Current Value')}</h3>
       <pre>${typeof block.currentValue === 'object' ? JSON.stringify(block.currentValue, null, 2) : block.currentValue}</pre>
     </body>
     </html>
@@ -175,7 +176,7 @@ async function showDetailInfo(block: LinkedConfigBlock): Promise<void> {
 }
 
 /**
- * 格式化值用于显示
+ * Format value for display
  */
 function formatValue(value: any): string {
   if (value === null || value === undefined) {
@@ -187,7 +188,7 @@ function formatValue(value: any): string {
       const json = JSON.stringify(value);
       return json.length > 50 ? json.substring(0, 47) + '...' : json;
     } catch {
-      return '[对象]';
+      return `[${vscode.l10n.t('Object')}]`;
     }
   }
 

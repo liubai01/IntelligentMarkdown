@@ -1,5 +1,5 @@
 /**
- * 核心模块导出
+ * Core module exports
  */
 
 export { LuaParser } from './parser/luaParser';

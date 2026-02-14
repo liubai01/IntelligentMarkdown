@@ -1,6 +1,6 @@
 /**
- * Lua AST 解析器
- * 使用 luaparse 解析 Lua 源码并定位变量
+ * Lua AST parser
+ * Uses luaparse to parse Lua source and locate variables
  */
 
 import * as luaparse from 'luaparse';
@@ -21,37 +21,37 @@ export class LuaParser {
   }
 
   /**
-   * 根据路径查找 Lua 变量节点
-   * @param keyPath 变量路径，如 "PlayerConfig.BaseStats.HP"
+   * Find Lua variable node by path
+   * @param keyPath Variable path, e.g. "PlayerConfig.BaseStats.HP"
    */
   findNodeByPath(keyPath: string): LuaParseResult {
     try {
       const segments = this.parsePath(keyPath);
       if (segments.length === 0) {
-        return { success: false, error: '无效的路径' };
+        return { success: false, error: 'Invalid path' };
       }
 
-      // 查找根变量
+      // Find root variable
       const rootName = segments[0].value as string;
       let currentNode = this.findRootAssignment(rootName);
 
       if (!currentNode) {
-        return { success: false, error: `找不到根变量: ${rootName}` };
+        return { success: false, error: `Root variable not found: ${rootName}` };
       }
 
-      // 如果只有一层，直接返回
+      // If only one level, return directly
       if (segments.length === 1) {
         return { success: true, node: this.extractValueNode(currentNode), astNode: currentNode };
       }
 
-      // 遍历嵌套路径
+      // Traverse nested path
       for (let i = 1; i < segments.length; i++) {
         const segment = segments[i];
         const nextNode = this.findInTable(currentNode, segment);
 
         if (!nextNode) {
           const pathSoFar = segments.slice(0, i + 1).map(s => s.value).join('.');
-          return { success: false, error: `找不到路径: ${pathSoFar}` };
+          return { success: false, error: `Path not found: ${pathSoFar}` };
         }
 
         currentNode = nextNode;
@@ -61,14 +61,14 @@ export class LuaParser {
     } catch (error) {
       return {
         success: false,
-        error: `解析错误: ${error instanceof Error ? error.message : String(error)}`
+        error: `Parse error: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
-   * 解析路径字符串为路径段数组
-   * 支持格式: Config.Items[1].Name, Config["special-key"]
+   * Parse path string into path segment array
+   * Supports: Config.Items[1].Name, Config["special-key"]
    */
   private parsePath(path: string): PathSegment[] {
     const segments: PathSegment[] = [];
@@ -77,13 +77,13 @@ export class LuaParser {
     let match;
     while ((match = regex.exec(path)) !== null) {
       if (match[1]) {
-        // 普通标识符: Config, Items, Name
+        // Identifier: Config, Items, Name
         segments.push({ type: 'key', value: match[1] });
       } else if (match[2]) {
-        // 数字索引: [1], [2]
+        // Numeric index: [1], [2]
         segments.push({ type: 'index', value: parseInt(match[2], 10) });
       } else if (match[3] || match[4]) {
-        // 字符串键: ["key"], ['key']
+        // String key: ["key"], ['key']
         segments.push({ type: 'string-key', value: match[3] || match[4] });
       }
     }
@@ -92,11 +92,11 @@ export class LuaParser {
   }
 
   /**
-   * 查找根级赋值语句
+   * Find root-level assignment statement
    */
   private findRootAssignment(name: string): any {
     for (const statement of this.ast.body) {
-      // 处理赋值语句: PlayerConfig = { ... }
+      // Handle assignment: PlayerConfig = { ... }
       if (statement.type === 'AssignmentStatement') {
         for (let i = 0; i < statement.variables.length; i++) {
           const variable = statement.variables[i];
@@ -106,7 +106,7 @@ export class LuaParser {
         }
       }
 
-      // 处理局部变量: local PlayerConfig = { ... }
+      // Handle local variable: local PlayerConfig = { ... }
       if (statement.type === 'LocalStatement') {
         for (let i = 0; i < statement.variables.length; i++) {
           const variable = statement.variables[i];
@@ -121,7 +121,7 @@ export class LuaParser {
   }
 
   /**
-   * 在 Table 中查找指定字段
+   * Find a specific field in a Table
    */
   private findInTable(node: any, segment: PathSegment): any {
     if (!node || node.type !== 'TableConstructorExpression') {
@@ -130,25 +130,25 @@ export class LuaParser {
 
     for (const field of node.fields) {
       if (segment.type === 'key' || segment.type === 'string-key') {
-        // 查找键值对: key = value 或 ["key"] = value
+        // Find key-value pair: key = value or ["key"] = value
         if (field.type === 'TableKeyString') {
           if (field.key.name === segment.value) {
             return field.value;
           }
         } else if (field.type === 'TableKey') {
-          // 字符串键: ["key"] = value
+          // String key: ["key"] = value
           if (field.key.type === 'StringLiteral' && field.key.value === segment.value) {
             return field.value;
           }
         }
       } else if (segment.type === 'index') {
-        // 查找数组元素: { [1] = value } 或 { value, value }
+        // Find array element: { [1] = value } or { value, value }
         if (field.type === 'TableKey') {
           if (field.key.type === 'NumericLiteral' && field.key.value === segment.value) {
             return field.value;
           }
         } else if (field.type === 'TableValue') {
-          // 隐式索引的数组
+          // Implicit index array
           const index = node.fields.filter((f: any) => f.type === 'TableValue').indexOf(field) + 1;
           if (index === segment.value) {
             return field.value;
@@ -161,7 +161,7 @@ export class LuaParser {
   }
 
   /**
-   * 从 AST 节点提取值信息
+   * Extract value info from AST node
    */
   private extractValueNode(node: any): LuaValueNode {
     let type: LuaValueType = 'nil';
@@ -174,12 +174,12 @@ export class LuaParser {
         break;
       case 'StringLiteral':
         type = 'string';
-        // luaparse 的 StringLiteral 节点中，value 可能为 null，实际值在 raw 中
-        // raw 包含引号，需要去除: "zh-CN" -> zh-CN 或 'text' -> text
+        // luaparse StringLiteral node: value may be null, actual value in raw
+        // raw includes quotes, need to strip: "zh-CN" -> zh-CN or 'text' -> text
         if (node.value !== null && node.value !== undefined) {
           value = node.value;
         } else if (node.raw) {
-          // 去除首尾的引号（支持单引号和双引号）
+          // Strip surrounding quotes (supports single and double quotes)
           const raw = node.raw as string;
           if ((raw.startsWith('"') && raw.endsWith('"')) || 
               (raw.startsWith("'") && raw.endsWith("'"))) {
@@ -206,7 +206,7 @@ export class LuaParser {
         value = '[function]';
         break;
       default:
-        // 对于其他类型（如表达式），尝试获取原始文本
+        // For other types (e.g. expressions), try to get raw text
         type = 'string';
         value = this.sourceCode.substring(node.range[0], node.range[1]);
     }
@@ -221,7 +221,7 @@ export class LuaParser {
   }
 
   /**
-   * 提取 Table 的值（简单形式）
+   * Extract Table value (simple form)
    */
   private extractTableValue(node: any): any {
     const result: any = {};
@@ -245,7 +245,7 @@ export class LuaParser {
       }
     }
 
-    // 如果是纯数组，转换为 JavaScript 数组
+    // If pure array, convert to JavaScript array
     if (isArray && arrayIndex > 0) {
       const arr = [];
       for (let i = 1; i <= arrayIndex; i++) {
@@ -258,8 +258,8 @@ export class LuaParser {
   }
 
   /**
-   * 提取表格数组的详细结构（用于 table 控件）
-   * 返回数组中每个元素的完整字段信息，包括 range 信息
+   * Extract detailed table array structure (for table control)
+   * Returns field info with range for each array element
    */
   extractTableArray(node: any): Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }> | null {
     if (!node || node.type !== 'TableConstructorExpression') {
@@ -270,7 +270,7 @@ export class LuaParser {
     
     for (const field of node.fields) {
       if (field.type === 'TableValue' && field.value.type === 'TableConstructorExpression') {
-        // 这是一个数组元素，且是一个对象
+        // Array element that is an object
         const rowData: Record<string, any> = {};
         const rowRanges: Record<string, [number, number]> = {};
 
@@ -301,14 +301,14 @@ export class LuaParser {
   }
 
   /**
-   * 查找函数声明（支持多种 Lua 函数声明模式）
-   * - 表字段: GameConfig = { onInit = function() ... end }
-   * - 独立声明: function GameConfig.onInit() ... end
-   * - 独立声明(冒号): function GameConfig:onInit() ... end
-   * - 赋值声明: GameConfig.onInit = function() ... end
+   * Find function declaration (supports multiple Lua function declaration patterns)
+   * - Table field: GameConfig = { onInit = function() ... end }
+   * - Standalone: function GameConfig.onInit() ... end
+   * - Standalone (colon): function GameConfig:onInit() ... end
+   * - Assignment: GameConfig.onInit = function() ... end
    */
   findFunctionByFullPath(keyPath: string): LuaParseResult {
-    // 先尝试普通路径查找（处理表字段中的函数）
+    // Try normal path lookup first (handles functions in table fields)
     const normalResult = this.findNodeByPath(keyPath);
     if (normalResult.success && normalResult.node && normalResult.node.type === 'function') {
       return normalResult;
@@ -317,7 +317,7 @@ export class LuaParser {
     const targetPath = keyPath.split('.').join('.');
 
     for (const statement of this.ast.body) {
-      // 模式: function A.B.C() ... end 或 function A:B() ... end
+      // Pattern: function A.B.C() ... end or function A:B() ... end
       if (statement.type === 'FunctionDeclaration' && statement.identifier) {
         const declPath = this.getMemberExpressionPath(statement.identifier);
         if (declPath.join('.') === targetPath) {
@@ -329,7 +329,7 @@ export class LuaParser {
         }
       }
 
-      // 模式: A.B.C = function() ... end
+      // Pattern: A.B.C = function() ... end
       if (statement.type === 'AssignmentStatement') {
         for (let i = 0; i < statement.variables.length; i++) {
           const variable = statement.variables[i];
@@ -347,11 +347,11 @@ export class LuaParser {
       }
     }
 
-    return { success: false, error: `找不到函数: ${keyPath}` };
+    return { success: false, error: `Function not found: ${keyPath}` };
   }
 
   /**
-   * 从 MemberExpression 或 Identifier 节点提取路径
+   * Extract path from MemberExpression or Identifier node
    */
   private getMemberExpressionPath(node: any): string[] {
     if (node.type === 'Identifier') {
@@ -364,7 +364,7 @@ export class LuaParser {
   }
 
   /**
-   * 获取所有顶级变量
+   * Get all top-level variables
    */
   getAllRootVariables(): string[] {
     const variables: string[] = [];
@@ -390,7 +390,7 @@ export class LuaParser {
   }
 
   /**
-   * 获取 AST（用于调试）
+   * Get AST (for debugging)
    */
   getAST(): luaparse.Chunk {
     return this.ast;

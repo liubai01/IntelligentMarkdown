@@ -1,6 +1,6 @@
 /**
- * 悬停提示提供者
- * 在 Markdown 的 lua-config 代码块上显示当前 Lua 变量的值
+ * Hover provider
+ * Shows current Lua variable value on hover over lua-config code blocks in Markdown
  */
 
 import * as vscode from 'vscode';
@@ -28,7 +28,7 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
     const text = document.getText();
     const blocks = this.configParser.parseMarkdown(text);
 
-    // 查找位置所在的配置块
+    // Find the config block at the current position
     const currentBlock = blocks.find(block =>
       position.line >= block.startLine - 1 && position.line <= block.endLine - 1
     );
@@ -37,7 +37,7 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
       return null;
     }
 
-    // 链接到 Lua 文件获取值
+    // Link to Lua file to get value
     const linkedBlocks = await this.luaLinker.linkBlocks([currentBlock], document.uri.fsPath);
     const linkedBlock = linkedBlocks[0];
 
@@ -45,68 +45,68 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
       return null;
     }
 
-    // 构建悬停内容
+    // Build hover content
     const contents = new vscode.MarkdownString();
     contents.isTrusted = true;
 
-    // 标题
-    contents.appendMarkdown(`### 🔗 Lua 配置绑定\n\n`);
+    // Title
+    contents.appendMarkdown(`### 🔗 ${vscode.l10n.t('Lua Config Binding')}\n\n`);
 
-    // 状态图标
+    // Status icon
     const statusIcon = linkedBlock.linkStatus === 'ok' ? '✅' : '❌';
 
-    // 基本信息
-    contents.appendMarkdown(`| 属性 | 值 |\n`);
+    // Basic info
+    contents.appendMarkdown(`| ${vscode.l10n.t('Property')} | ${vscode.l10n.t('Value')} |\n`);
     contents.appendMarkdown(`|------|----|\n`);
-    contents.appendMarkdown(`| **状态** | ${statusIcon} ${this.getStatusText(linkedBlock.linkStatus)} |\n`);
-    contents.appendMarkdown(`| **文件** | \`${linkedBlock.file}\` |\n`);
-    contents.appendMarkdown(`| **变量** | \`${linkedBlock.key}\` |\n`);
-    contents.appendMarkdown(`| **类型** | \`${linkedBlock.type}\` |\n`);
+    contents.appendMarkdown(`| **${vscode.l10n.t('Status')}** | ${statusIcon} ${this.getStatusText(linkedBlock.linkStatus)} |\n`);
+    contents.appendMarkdown(`| **${vscode.l10n.t('File')}** | \`${linkedBlock.file}\` |\n`);
+    contents.appendMarkdown(`| **${vscode.l10n.t('Variable')}** | \`${linkedBlock.key}\` |\n`);
+    contents.appendMarkdown(`| **${vscode.l10n.t('Type')}** | \`${linkedBlock.type}\` |\n`);
 
     if (linkedBlock.linkStatus === 'ok') {
-      // 显示当前值
+      // Show current value
       const valueDisplay = this.formatValueForDisplay(linkedBlock.currentValue);
-      contents.appendMarkdown(`| **当前值** | ${valueDisplay} |\n`);
+      contents.appendMarkdown(`| **${vscode.l10n.t('Current Value')}** | ${valueDisplay} |\n`);
 
-      // 显示位置
+      // Show position
       if (linkedBlock.luaNode) {
-        contents.appendMarkdown(`| **位置** | 第 ${linkedBlock.luaNode.loc.start.line} 行 |\n`);
+        contents.appendMarkdown(`| **${vscode.l10n.t('Position')}** | ${vscode.l10n.t('Line {0}', linkedBlock.luaNode.loc.start.line)} |\n`);
       }
 
-      // 添加跳转链接
+      // Add jump link
       contents.appendMarkdown(`\n---\n`);
       const uri = vscode.Uri.file(linkedBlock.absoluteFilePath);
       const line = linkedBlock.luaNode?.loc.start.line || 1;
-      contents.appendMarkdown(`[📍 跳转到 Lua 源码](${uri}#L${line})\n`);
+      contents.appendMarkdown(`[📍 ${vscode.l10n.t('Jump to Lua Source')}](${uri}#L${line})\n`);
     } else {
-      // 显示错误信息
+      // Show error info
       contents.appendMarkdown(`\n---\n`);
-      contents.appendMarkdown(`⚠️ **错误**: ${linkedBlock.linkError}\n`);
+      contents.appendMarkdown(`⚠️ **${vscode.l10n.t('Error')}**: ${linkedBlock.linkError}\n`);
     }
 
     return new vscode.Hover(contents);
   }
 
   /**
-   * 获取状态文本
+   * Get status text
    */
   private getStatusText(status: string): string {
     switch (status) {
       case 'ok':
-        return '已链接';
+        return vscode.l10n.t('Linked');
       case 'file-not-found':
-        return '文件不存在';
+        return vscode.l10n.t('File not found');
       case 'key-not-found':
-        return '变量未找到';
+        return vscode.l10n.t('Variable not found');
       case 'parse-error':
-        return '解析错误';
+        return vscode.l10n.t('Parse error');
       default:
-        return '未知状态';
+        return vscode.l10n.t('Unknown');
     }
   }
 
   /**
-   * 格式化值用于显示
+   * Format value for display
    */
   private formatValueForDisplay(value: any): string {
     if (value === null || value === undefined) {
@@ -117,11 +117,11 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
       try {
         const json = JSON.stringify(value, null, 2);
         if (json.length > 100) {
-          return '`[复杂对象]`';
+          return `\`[${vscode.l10n.t('Complex Object')}]\``;
         }
         return `\`${json}\``;
       } catch {
-        return '`[对象]`';
+        return `\`[${vscode.l10n.t('Object')}]\``;
       }
     }
 

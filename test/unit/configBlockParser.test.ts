@@ -156,7 +156,7 @@ type: invalid_type
 `);
       
       expect(result.success).toBe(false);
-      expect(result.error).toContain('类型');
+      expect(result.error).toContain('type');
     });
   });
 

@@ -1,6 +1,6 @@
 /**
- * 装饰器提供者
- * 在编辑器中内联显示 Lua 变量的当前值
+ * Decoration provider
+ * Shows inline Lua variable values in the editor
  */
 
 import * as vscode from 'vscode';
@@ -11,21 +11,21 @@ export class LuaConfigDecorationProvider {
   private configParser: ConfigBlockParser;
   private luaLinker: LuaLinker;
 
-  // 装饰类型
+  // Decoration types
   private valueDecorationType: vscode.TextEditorDecorationType;
   private errorDecorationType: vscode.TextEditorDecorationType;
 
-  // 活跃编辑器
+  // Active editor
   private activeEditor: vscode.TextEditor | undefined;
 
-  // 防抖定时器
+  // Debounce timer
   private updateTimeout: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.configParser = new ConfigBlockParser();
     this.luaLinker = new LuaLinker();
 
-    // 创建装饰类型
+    // Create decoration types
     this.valueDecorationType = vscode.window.createTextEditorDecorationType({
       after: {
         color: new vscode.ThemeColor('editorCodeLens.foreground'),
@@ -42,21 +42,21 @@ export class LuaConfigDecorationProvider {
       }
     });
 
-    // 监听编辑器变化
+    // Watch editor changes
     vscode.window.onDidChangeActiveTextEditor(
       editor => this.onActiveEditorChanged(editor),
       null,
       context.subscriptions
     );
 
-    // 监听文档变化
+    // Watch document changes
     vscode.workspace.onDidChangeTextDocument(
       event => this.onDocumentChanged(event),
       null,
       context.subscriptions
     );
 
-    // 初始更新
+    // Initial update
     this.activeEditor = vscode.window.activeTextEditor;
     if (this.activeEditor) {
       this.triggerUpdateDecorations();
@@ -64,7 +64,7 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 活跃编辑器变化
+   * Active editor changed
    */
   private onActiveEditorChanged(editor: vscode.TextEditor | undefined): void {
     this.activeEditor = editor;
@@ -74,7 +74,7 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 文档内容变化
+   * Document content changed
    */
   private onDocumentChanged(event: vscode.TextDocumentChangeEvent): void {
     if (
@@ -87,7 +87,7 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 触发更新装饰（带防抖）
+   * Trigger decoration update (with debounce)
    */
   private triggerUpdateDecorations(): void {
     if (this.updateTimeout) {
@@ -97,7 +97,7 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 更新装饰
+   * Update decorations
    */
   private async updateDecorations(): Promise<void> {
     if (!this.activeEditor) {
@@ -109,7 +109,7 @@ export class LuaConfigDecorationProvider {
       return;
     }
 
-    // 检查配置
+    // Check configuration
     const showInlineValues = vscode.workspace
       .getConfiguration('intelligentMarkdown')
       .get('showInlineValues', true);
@@ -129,15 +129,15 @@ export class LuaConfigDecorationProvider {
       return;
     }
 
-    // 链接到 Lua 文件
+    // Link to Lua files
     const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
 
-    // 创建装饰
+    // Create decorations
     const valueDecorations: vscode.DecorationOptions[] = [];
     const errorDecorations: vscode.DecorationOptions[] = [];
 
     for (const linkedBlock of linkedBlocks) {
-      // 查找 key: 行的位置
+      // Find the key: line position
       const keyLinePosition = this.findKeyLinePosition(document, linkedBlock);
       if (!keyLinePosition) {
         continue;
@@ -170,13 +170,13 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 查找 key 行的位置
+   * Find key line position
    */
   private findKeyLinePosition(
     document: vscode.TextDocument,
     linkedBlock: LinkedConfigBlock
   ): vscode.Range | null {
-    // 在配置块内查找 key: 行
+    // Search for key: line within the config block
     for (let line = linkedBlock.startLine - 1; line < linkedBlock.endLine; line++) {
       const lineText = document.lineAt(line).text;
       if (lineText.trim().startsWith('key:')) {
@@ -190,7 +190,7 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 格式化值文本
+   * Format value text
    */
   private formatValueText(value: any): string {
     if (value === null || value === undefined) {
@@ -201,11 +201,11 @@ export class LuaConfigDecorationProvider {
       try {
         const json = JSON.stringify(value);
         if (json.length > 50) {
-          return '[对象]';
+          return `[${vscode.l10n.t('Object')}]`;
         }
         return json;
       } catch {
-        return '[对象]';
+        return `[${vscode.l10n.t('Object')}]`;
       }
     }
 
@@ -220,14 +220,14 @@ export class LuaConfigDecorationProvider {
   }
 
   /**
-   * 判断是否是 Markdown 文档
+   * Check if document is Markdown
    */
   private isMarkdownDocument(document: vscode.TextDocument): boolean {
     return document.languageId === 'markdown';
   }
 
   /**
-   * 销毁
+   * Dispose
    */
   dispose(): void {
     this.valueDecorationType.dispose();

@@ -1,5 +1,5 @@
 /**
- * 类型定义导出
+ * Type definitions export
  */
 
 export * from './configBlock';

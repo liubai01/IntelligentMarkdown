@@ -1,5 +1,5 @@
 /**
- * 命令导出
+ * Commands export
  */
 
 export { showVariableValueCommand } from './showVariableValue';

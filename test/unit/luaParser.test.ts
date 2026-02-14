@@ -79,7 +79,7 @@ local LocalConfig = {
       const result = parser.findNodeByPath('NonExistent.Value');
       
       expect(result.success).toBe(false);
-      expect(result.error).toContain('找不到');
+      expect(result.error).toContain('not found');
     });
 
     it('应该返回正确的 range', () => {

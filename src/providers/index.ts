@@ -1,5 +1,5 @@
 /**
- * 提供者导出
+ * Providers export
  */
 
 export { LuaConfigDocumentLinkProvider } from './documentLinkProvider';
