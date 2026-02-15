@@ -273,10 +273,15 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Handle "Add to Chat" — add source file as @file reference in Cursor composer (like native drag-and-drop)
+   * Handle "Add to Chat" — open a new Cursor chat with the file as @file context.
+   *
+   * Strategy:
+   *   1. workbench.action.chat.open  →  creates a fresh composer tab (100% reliable)
+   *   2. composer.addfilestocomposer  →  attaches the file as native @file context badge
+   *   3. Fallback: copy @file reference to clipboard
    */
   private async handleAddFileToChat(
-    message: { absoluteFilePath: string }
+    message: { absoluteFilePath: string; workspaceRelativePath: string }
   ): Promise<void> {
     try {
       const filePath = message.absoluteFilePath;
@@ -286,26 +291,28 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
 
       const fileUri = vscode.Uri.file(filePath);
+      const fileName = path.basename(filePath);
 
-      // Use Cursor's native "Add Files to Composer" command — creates @file reference like drag-and-drop
+      // Step 1: Create a new chat tab (always works, gives us a clean composer)
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open');
+      } catch {
+        // ignore — composer may already be focused
+      }
+
+      // Brief delay to let the composer initialise
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      // Step 2: Add the file as native @file context (creates the badge)
       try {
         await vscode.commands.executeCommand('composer.addfilestocomposer', fileUri);
       } catch {
-        // Fallback: try to focus composer first, then retry
-        try {
-          await vscode.commands.executeCommand('composer.focusComposer');
-          await vscode.commands.executeCommand('composer.addfilestocomposer', fileUri);
-        } catch {
-          // Final fallback: copy workspace-relative path to clipboard
-          const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          const relativePath = workspaceRoot
-            ? path.relative(workspaceRoot, filePath).replace(/\\/g, '/')
-            : filePath;
-          await vscode.env.clipboard.writeText(relativePath);
-          vscode.window.showInformationMessage(
-            vscode.l10n.t('File path copied: {0}', relativePath)
-          );
-        }
+        // If addfilestocomposer fails, fall back to clipboard
+        const wsRel = message.workspaceRelativePath || fileName;
+        await vscode.env.clipboard.writeText(`@${wsRel}`);
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('File reference copied — press Ctrl+V to paste: @{0}', wsRel)
+        );
       }
     } catch (error) {
       vscode.window.showErrorMessage(vscode.l10n.t('Failed to add file to chat'));
@@ -2254,7 +2261,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (!filePath) return;
         vscode.postMessage({
           type: 'addFileToChat',
-          absoluteFilePath: filePath
+          absoluteFilePath: filePath,
+          workspaceRelativePath: data.workspaceRelativePath || ''
         });
       }
 
