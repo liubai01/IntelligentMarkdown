@@ -1,6 +1,16 @@
 # Quest System Configuration
 
-This document manages the quest system. It includes architecture diagrams powered by **Mermaid** and editable config controls.
+This document manages the quest system. It includes architecture diagrams powered by **Mermaid**, editable config controls, and **probe links** for quick code navigation.
+
+## Quick Navigation
+
+> Use probe links to jump directly to key locations in the source code:
+
+- [Quest Settings Definition](probe://./quest_system.lua#quest_settings) — where the QuestSystem table is defined
+- [Reward Table](probe://./quest_system.lua#reward_table) — reward configuration data
+- [Quest Complete Handler](probe://./quest_system.lua#quest_complete_handler) — the main completion callback
+- [EXP Calculation Logic](probe://./quest_system.lua#exp_calculation) — how experience is calculated
+- [Rare Quest Logic](probe://./quest_system.lua#rare_quest_logic) — special handling for rare quests
 
 ## System Architecture
 
@@ -151,6 +161,9 @@ stateDiagram-v2
 
 ## Instructions
 
+- **Probe Links**: Click `📍` links to jump directly to specific locations in the Lua source code
+  - Lua format: `-- @probe:marker_name`
+  - Markdown format: `[text](probe://./file.lua#marker_name)`
 - **Mermaid Diagrams**: Architecture and flow diagrams are rendered automatically in the preview panel
 - **Config Controls**: Edit quest settings directly with sliders, toggles, and dropdowns
 - **Reward Table**: Batch edit quest rewards in the table view

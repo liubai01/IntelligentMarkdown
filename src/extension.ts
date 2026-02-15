@@ -80,6 +80,31 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
+  // Register command: goto probe location
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.gotoProbe',
+      async (filePath: string, line: number) => {
+        try {
+          const uri = vscode.Uri.file(filePath);
+          const document = await vscode.workspace.openTextDocument(uri);
+          const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+
+          const position = new vscode.Position(Math.max(0, line - 1), 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(
+            new vscode.Range(position, position),
+            vscode.TextEditorRevealType.InCenter
+          );
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            vscode.l10n.t('Unable to open probe target: {0}', error instanceof Error ? error.message : String(error))
+          );
+        }
+      }
+    )
+  );
+
   // Watch Lua file changes
   const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
 

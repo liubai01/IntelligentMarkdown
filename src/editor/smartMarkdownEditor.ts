@@ -11,6 +11,7 @@ import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { LuaParser } from '../core/parser/luaParser';
 import { LuaPatcher } from '../core/patcher/luaPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
+import { ProbeScanner } from '../core/probeScanner';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
@@ -18,6 +19,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private configParser: ConfigBlockParser;
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
+  private probeScanner: ProbeScanner;
   /** Code block indent normalization cache (rebuilt on each render) */
   private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
 
@@ -25,6 +27,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     this.configParser = new ConfigBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
+    this.probeScanner = new ProbeScanner();
   }
 
   public async resolveCustomTextEditor(
@@ -58,6 +61,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await this.updateWebview(document, webviewPanel.webview);
             break;
           case 'gotoSource':
+            await this.handleGotoSource(message);
+            break;
+          case 'gotoProbe':
             await this.handleGotoSource(message);
             break;
           case 'refresh':
@@ -100,7 +106,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const blocks = this.configParser.parseMarkdown(text);
     const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
 
-    webview.html = this.getHtmlContent(webview, text, linkedBlocks);
+    webview.html = this.getHtmlContent(webview, text, linkedBlocks, document.uri.fsPath);
   }
 
   /**
@@ -306,13 +312,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private getHtmlContent(
     webview: vscode.Webview,
     markdownText: string,
-    linkedBlocks: LinkedConfigBlock[]
+    linkedBlocks: LinkedConfigBlock[],
+    documentPath: string
   ): string {
     // Clear indent normalization cache
     this.codeNormCache.clear();
 
     // Convert markdown to HTML and replace config blocks with controls
-    const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks);
+    const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks, documentPath);
 
     // CodeMirror bundle URI
     const codeEditorScriptUri = webview.asWebviewUri(
@@ -358,7 +365,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private renderMarkdownWithControls(
     markdownText: string,
-    linkedBlocks: LinkedConfigBlock[]
+    linkedBlocks: LinkedConfigBlock[],
+    documentPath: string
   ): string {
     let html = markdownText;
 
@@ -388,6 +396,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       mermaidRegex.lastIndex = 0;
     }
 
+    // Step 1.6: Resolve probe:// links to clickable HTML links
+    const mdDir = path.dirname(documentPath);
+    html = this.resolveProbeLinks(html, mdDir);
+
     // Step 2: Markdown conversion
     html = this.simpleMarkdownToHtml(html);
 
@@ -416,6 +428,33 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     <div class="mermaid-loading">⏳ ${vscode.l10n.t('Rendering diagram...')}</div>
   </div>
 </div>`;
+  }
+
+  /**
+   * Resolve probe:// links in text to webview-clickable HTML links
+   * Converts [text](probe://./file.lua#marker) → [text](javascript:void(0)) with onclick handler
+   */
+  private resolveProbeLinks(text: string, mdDir: string): string {
+    const probeLinks = this.probeScanner.findProbeLinks(text);
+
+    // Process in reverse order to preserve indices
+    const sortedLinks = [...probeLinks].sort((a, b) => b.matchStart - a.matchStart);
+
+    for (const probeLink of sortedLinks) {
+      const target = this.probeScanner.resolveProbe(probeLink.filePath, probeLink.probeName, mdDir);
+
+      let replacement: string;
+      if (target) {
+        const escapedPath = target.filePath.replace(/\\/g, '\\\\');
+        replacement = `<a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a>`;
+      } else {
+        replacement = `<span class="probe-link-broken" title="${vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath)}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
+      }
+
+      text = text.substring(0, probeLink.matchStart) + replacement + text.substring(probeLink.matchEnd);
+    }
+
+    return text;
   }
 
   /**
@@ -1493,6 +1532,28 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         line-height: 1.6;
       }
 
+      /* ========== Probe 链接样式 ========== */
+      .probe-link {
+        color: var(--color-accent);
+        text-decoration: none;
+        cursor: pointer;
+        border-bottom: 1px dashed var(--color-accent);
+        padding-bottom: 1px;
+        transition: opacity 0.15s;
+      }
+
+      .probe-link:hover {
+        opacity: 0.8;
+        border-bottom-style: solid;
+      }
+
+      .probe-link-broken {
+        color: var(--color-danger);
+        text-decoration: line-through;
+        opacity: 0.7;
+        cursor: help;
+      }
+
       /* ========== Mermaid 图表样式 ========== */
       .mermaid-block {
         position: relative;
@@ -1784,6 +1845,14 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       function gotoSource(file, line) {
         vscode.postMessage({
           type: 'gotoSource',
+          file: file,
+          line: line
+        });
+      }
+
+      function gotoProbe(file, line) {
+        vscode.postMessage({
+          type: 'gotoProbe',
           file: file,
           line: line
         });

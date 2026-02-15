@@ -1,22 +1,26 @@
 /**
  * Document link provider
- * Provides clickable links for lua-config code blocks in Markdown
+ * Provides clickable links for lua-config code blocks and probe:// links in Markdown
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { PathResolver } from '../core/linker/pathResolver';
+import { ProbeScanner } from '../core/probeScanner';
 
 export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvider {
   private configParser: ConfigBlockParser;
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
+  private probeScanner: ProbeScanner;
 
   constructor() {
     this.configParser = new ConfigBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
+    this.probeScanner = new ProbeScanner();
   }
 
   async provideDocumentLinks(
@@ -32,27 +36,30 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
 
     // Parse config blocks
     const blocks = this.configParser.parseMarkdown(text);
-    if (blocks.length === 0) {
-      return [];
+
+    if (blocks.length > 0) {
+      // Link to Lua files
+      const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
+
+      // Create links for each config block
+      for (const linkedBlock of linkedBlocks) {
+        // Create file field link
+        const fileLink = this.createFileLinkForBlock(document, linkedBlock);
+        if (fileLink) {
+          links.push(fileLink);
+        }
+
+        // Create key field link (jump to specific line)
+        const keyLink = this.createKeyLinkForBlock(document, linkedBlock);
+        if (keyLink) {
+          links.push(keyLink);
+        }
+      }
     }
 
-    // Link to Lua files
-    const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
-
-    // Create links for each config block
-    for (const linkedBlock of linkedBlocks) {
-      // Create file field link
-      const fileLink = this.createFileLinkForBlock(document, linkedBlock);
-      if (fileLink) {
-        links.push(fileLink);
-      }
-
-      // Create key field link (jump to specific line)
-      const keyLink = this.createKeyLinkForBlock(document, linkedBlock);
-      if (keyLink) {
-        links.push(keyLink);
-      }
-    }
+    // Parse probe:// links
+    const probeLinks = this.createProbeLinks(document, text);
+    links.push(...probeLinks);
 
     return links;
   }
@@ -138,6 +145,54 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
       `\n${vscode.l10n.t('Current value: {0}', JSON.stringify(linkedBlock.currentValue))}`;
 
     return link;
+  }
+
+  /**
+   * Create links for probe:// URLs in Markdown
+   */
+  private createProbeLinks(
+    document: vscode.TextDocument,
+    text: string
+  ): vscode.DocumentLink[] {
+    const links: vscode.DocumentLink[] = [];
+    const mdDir = path.dirname(document.uri.fsPath);
+    const probeLinks = this.probeScanner.findProbeLinks(text);
+
+    for (const probeLink of probeLinks) {
+      // Resolve probe target
+      const target = this.probeScanner.resolveProbe(
+        probeLink.filePath,
+        probeLink.probeName,
+        mdDir
+      );
+
+      if (!target) {
+        // Still create a link but with a command that shows an error
+        continue;
+      }
+
+      // Calculate range - cover the full [text](probe://...) link
+      const startPos = document.positionAt(probeLink.matchStart);
+      const endPos = document.positionAt(probeLink.matchEnd);
+      const range = new vscode.Range(startPos, endPos);
+
+      // Create URI pointing to file + line
+      const targetUri = vscode.Uri.file(target.filePath).with({
+        fragment: `L${target.line}`
+      });
+
+      const link = new vscode.DocumentLink(range, targetUri);
+      link.tooltip = vscode.l10n.t(
+        'Jump to probe "{0}" in {1} (Line {2})',
+        probeLink.probeName,
+        path.basename(target.filePath),
+        target.line
+      );
+
+      links.push(link);
+    }
+
+    return links;
   }
 
   /**

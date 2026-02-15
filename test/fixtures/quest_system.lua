@@ -1,4 +1,5 @@
 -- Quest System Configuration
+-- @probe:quest_settings
 QuestSystem = {
     Settings = {
         MaxActiveQuests = 5,
@@ -9,6 +10,7 @@ QuestSystem = {
         Difficulty = "normal"
     },
 
+    -- @probe:reward_table
     Rewards = {
         { id = 1001, name = "Beginner Pack",   exp = 100,  gold = 50,   rare = false },
         { id = 1002, name = "Warrior Trial",    exp = 300,  gold = 150,  rare = false },
@@ -17,15 +19,18 @@ QuestSystem = {
     },
 }
 
+-- @probe:quest_complete_handler
 -- Quest completion callback
 function QuestSystem.onQuestComplete(player, quest)
     local reward = QuestSystem.Rewards[quest.rewardIndex]
     if not reward then return end
 
+    -- @probe:exp_calculation
     local exp = reward.exp * QuestSystem.Settings.ExpMultiplier
     player:addExp(exp)
     player:addGold(reward.gold)
 
+    -- @probe:rare_quest_logic
     if reward.rare then
         player:showCelebration("rare_quest_complete")
         player:grantAchievement("rare_collector")
