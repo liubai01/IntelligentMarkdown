@@ -221,22 +221,11 @@ async function handleAutoOpenPreview(
     return;
   }
 
-  // Check file match pattern
+  // Check file match pattern — if it matches, open preview directly
   const pattern = config.get<string>('autoOpenPreviewPattern', '**/*.config.md');
   
-  // Simple glob matching
   if (!matchGlobPattern(document.uri.fsPath, pattern)) {
     return;
-  }
-
-  // Check if lua-config blocks are required
-  const onlyWithLuaConfig = config.get<boolean>('autoOpenPreviewOnlyWithLuaConfig', true);
-  
-  if (onlyWithLuaConfig) {
-    const content = document.getText();
-    if (!content.includes('```lua-config') && !content.includes('```lua-wizard')) {
-      return;
-    }
   }
 
   // If current panel is already showing the same document, skip

@@ -118,11 +118,6 @@
           "type": "string",
           "default": "**/*.config.md",
           "description": "Glob pattern for files that should auto-open preview (e.g., **/*.config.md or **/config/**/*.md)"
-        },
-        "intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig": {
-          "type": "boolean",
-          "default": true,
-          "description": "Only auto-open preview if Markdown file contains lua-config blocks"
         }
       }
     }
