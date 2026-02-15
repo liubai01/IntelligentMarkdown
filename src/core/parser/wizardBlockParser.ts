@@ -4,7 +4,7 @@
  */
 
 import * as yaml from 'yaml';
-import { WizardBlock, ParsedWizardBlock, WizardBlockParseResult, WizardStep } from '../../types';
+import { WizardBlock, ParsedWizardBlock, WizardBlockParseResult, WizardStep, WizardVariable } from '../../types';
 
 /** Regex for lua-wizard code blocks */
 const WIZARD_BLOCK_REGEX = /```lua-wizard\s*\n([\s\S]*?)```/g;
@@ -53,16 +53,29 @@ export class WizardBlockParser {
         return { success: false, error: 'Invalid wizard content' };
       }
 
-      // Validate required fields
-      if (!parsed.file) {
-        return { success: false, error: 'Missing required field: file' };
+      const action = parsed.action || 'append';
+      const validActions = ['append', 'run'];
+      if (!validActions.includes(action)) {
+        return { success: false, error: `Invalid action: ${action}` };
       }
-      if (!parsed.target) {
-        return { success: false, error: 'Missing required field: target' };
+
+      // Validate required fields based on action type
+      if (action === 'append') {
+        if (!parsed.file) {
+          return { success: false, error: 'Missing required field: file' };
+        }
+        if (!parsed.target) {
+          return { success: false, error: 'Missing required field: target' };
+        }
+        if (!parsed.template) {
+          return { success: false, error: 'Missing required field: template' };
+        }
+      } else if (action === 'run') {
+        if (!parsed.commands) {
+          return { success: false, error: 'Missing required field: commands (for run action)' };
+        }
       }
-      if (!parsed.template) {
-        return { success: false, error: 'Missing required field: template' };
-      }
+
       if (!parsed.steps || !Array.isArray(parsed.steps) || parsed.steps.length === 0) {
         return { success: false, error: 'Missing or empty required field: steps' };
       }
@@ -91,13 +104,37 @@ export class WizardBlockParser {
         });
       }
 
+      // Parse variables (optional)
+      let variables: Record<string, WizardVariable> | undefined;
+      if (parsed.variables && typeof parsed.variables === 'object') {
+        variables = {};
+        for (const [key, raw] of Object.entries(parsed.variables)) {
+          const varDef = raw as any;
+          if (!varDef || !varDef.type || !varDef.file || !varDef.path) {
+            return { success: false, error: `Variable "${key}" missing required fields (type, file, path)` };
+          }
+          const validVarTypes = ['json'];
+          if (!validVarTypes.includes(varDef.type)) {
+            return { success: false, error: `Variable "${key}" has invalid type: ${varDef.type}` };
+          }
+          variables[key] = {
+            type: varDef.type,
+            file: varDef.file,
+            path: varDef.path,
+          };
+        }
+      }
+
       const block: WizardBlock = {
-        file: parsed.file,
+        file: parsed.file || '',
         target: parsed.target,
-        action: parsed.action || 'append',
+        action,
         label: parsed.label,
         icon: parsed.icon,
         template: parsed.template,
+        commands: parsed.commands,
+        cwd: parsed.cwd,
+        variables,
         steps
       };
 

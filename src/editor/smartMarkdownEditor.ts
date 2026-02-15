@@ -13,7 +13,7 @@ import { LuaParser } from '../core/parser/luaParser';
 import { LuaPatcher } from '../core/patcher/luaPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
-import { ParsedWizardBlock, WizardStep } from '../types';
+import { ParsedWizardBlock, WizardStep, WizardVariable } from '../types';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
@@ -551,25 +551,97 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
+   * Resolve dynamic variables defined in a wizard block.
+   * Returns a map of variable name → resolved string value.
+   */
+  private resolveWizardVariables(
+    variables: Record<string, WizardVariable> | undefined,
+    documentPath: string
+  ): Record<string, string> {
+    const resolved: Record<string, string> = {};
+    if (!variables) return resolved;
+
+    const mdDir = path.dirname(documentPath);
+    for (const [key, varDef] of Object.entries(variables)) {
+      try {
+        if (varDef.type === 'json') {
+          const filePath = this.pathResolver.resolve(mdDir, varDef.file);
+          if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const json = JSON.parse(content);
+            // Traverse dot-separated path
+            const parts = varDef.path.split('.');
+            let val: any = json;
+            for (const part of parts) {
+              if (val && typeof val === 'object' && part in val) {
+                val = val[part];
+              } else {
+                val = undefined;
+                break;
+              }
+            }
+            resolved[key] = val !== undefined ? String(val) : '';
+          }
+        }
+      } catch {
+        resolved[key] = '';
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * Replace {{variable}} placeholders with resolved variable values in a string.
+   * Used for step descriptions and default values.
+   */
+  private applyVariablesToString(text: string, vars: Record<string, string>): string {
+    let result = text;
+    for (const [key, val] of Object.entries(vars)) {
+      result = result.split('{{' + key + '}}').join(val);
+    }
+    return result;
+  }
+
+  /**
    * Render a wizard block as a multi-step form UI
    */
   private renderWizardBlock(wizard: ParsedWizardBlock, index: number, documentPath: string): string {
     const wizardId = `wizard-${index}`;
-    const icon = wizard.icon || '🧙';
-    const label = wizard.label || vscode.l10n.t('Code Wizard');
+    const icon = wizard.icon || (wizard.action === 'run' ? '🚀' : '🧙');
+    const label = wizard.label || (wizard.action === 'run' ? vscode.l10n.t('Command Wizard') : vscode.l10n.t('Code Wizard'));
     const totalSteps = wizard.steps.length;
+    const isRunAction = wizard.action === 'run';
 
     // Resolve absolute file path for the target
     const mdDir = path.dirname(documentPath);
-    const absoluteFilePath = this.pathResolver.resolve(mdDir, wizard.file);
+    const absoluteFilePath = wizard.file ? this.pathResolver.resolve(mdDir, wizard.file) : '';
+
+    // Resolve dynamic variables
+    const resolvedVars = this.resolveWizardVariables(wizard.variables, documentPath);
+
+    // Apply resolved variables to step descriptions and defaults
+    const processedSteps = wizard.steps.map(step => {
+      const processed = { ...step };
+      if (typeof processed.description === 'string') {
+        processed.description = this.applyVariablesToString(processed.description, resolvedVars);
+      }
+      if (typeof processed.default === 'string') {
+        processed.default = this.applyVariablesToString(processed.default, resolvedVars);
+      }
+      return processed;
+    });
 
     // Build step forms
     let stepsHtml = '';
-    for (let i = 0; i < wizard.steps.length; i++) {
-      const step = wizard.steps[i];
+    for (let i = 0; i < processedSteps.length; i++) {
+      const step = processedSteps[i];
       const stepId = `${wizardId}-step-${i}`;
       const isFirst = i === 0;
-      const isLast = i === wizard.steps.length - 1;
+      const isLast = i === processedSteps.length - 1;
+
+      const confirmLabel = isRunAction
+        ? `▶️ ${vscode.l10n.t('Execute')}`
+        : `✅ ${vscode.l10n.t('Create')}`;
 
       stepsHtml += `
         <div class="wizard-step" id="${stepId}" style="display: ${isFirst ? 'block' : 'none'};">
@@ -585,20 +657,27 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             ${!isFirst ? `<button class="wizard-btn wizard-btn-secondary" onclick="wizardPrevStep('${wizardId}', ${i})">⬅ ${vscode.l10n.t('Previous')}</button>` : '<div></div>'}
             ${!isLast
               ? `<button class="wizard-btn wizard-btn-primary" onclick="wizardNextStep('${wizardId}', ${i})">${vscode.l10n.t('Next')} ➡</button>`
-              : `<button class="wizard-btn wizard-btn-success" onclick="wizardExecute('${wizardId}')">✅ ${vscode.l10n.t('Create')}</button>`
+              : `<button class="wizard-btn wizard-btn-success" onclick="wizardExecute('${wizardId}')">${confirmLabel}</button>`
             }
           </div>
         </div>`;
     }
 
-    // Preview area
+    // Preview area — different text based on action type
+    const previewHeader = isRunAction
+      ? vscode.l10n.t('Commands Preview')
+      : vscode.l10n.t('Preview');
+    const confirmBtnLabel = isRunAction
+      ? `▶️ ${vscode.l10n.t('Confirm & Execute')}`
+      : `✅ ${vscode.l10n.t('Confirm & Insert')}`;
+
     const previewHtml = `
       <div class="wizard-preview" id="${wizardId}-preview" style="display: none;">
-        <div class="wizard-preview-header">${vscode.l10n.t('Preview')}</div>
+        <div class="wizard-preview-header">${previewHeader}</div>
         <pre class="wizard-preview-code" id="${wizardId}-preview-code"></pre>
         <div class="wizard-step-actions">
           <button class="wizard-btn wizard-btn-secondary" onclick="wizardHidePreview('${wizardId}')">${vscode.l10n.t('Back')}</button>
-          <button class="wizard-btn wizard-btn-success" onclick="wizardConfirm('${wizardId}')">✅ ${vscode.l10n.t('Confirm & Insert')}</button>
+          <button class="wizard-btn wizard-btn-success" onclick="wizardConfirm('${wizardId}')">${confirmBtnLabel}</button>
         </div>
       </div>`;
 
@@ -608,20 +687,31 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       target: wizard.target,
       action: wizard.action,
       template: wizard.template,
-      steps: wizard.steps,
-      absoluteFilePath
+      commands: wizard.commands,
+      cwd: wizard.cwd,
+      steps: processedSteps,
+      absoluteFilePath,
+      resolvedVars
     };
     const dataAttr = this.escapeHtml(JSON.stringify(wizardData));
+
+    // Header subtitle: show target for append, cwd for run
+    const subtitleText = isRunAction
+      ? (wizard.cwd || '.')
+      : (wizard.target || '');
+    const subtitleTitle = isRunAction
+      ? vscode.l10n.t('Working directory: {0}', wizard.cwd || '.')
+      : `${wizard.file} → ${wizard.target || ''}`;
 
     return `
 <div class="wizard-block" id="${wizardId}" data-wizard='${dataAttr}'>
   <div class="wizard-header">
     <span class="wizard-icon">${icon}</span>
     <span class="wizard-title">${this.escapeHtml(label)}</span>
-    <span class="wizard-target" title="${this.escapeHtml(wizard.file)} → ${this.escapeHtml(wizard.target)}">${this.escapeHtml(wizard.target)}</span>
+    <span class="wizard-target" title="${this.escapeHtml(subtitleTitle)}">${this.escapeHtml(subtitleText)}</span>
   </div>
   <div class="wizard-progress" id="${wizardId}-progress">
-    ${wizard.steps.map((s: WizardStep, i: number) => `<div class="wizard-progress-dot ${i === 0 ? 'active' : ''}" id="${wizardId}-dot-${i}" title="${this.escapeHtml(s.label)}">${i + 1}</div>`).join('<div class="wizard-progress-line"></div>')}
+    ${processedSteps.map((s: WizardStep, i: number) => `<div class="wizard-progress-dot ${i === 0 ? 'active' : ''}" id="${wizardId}-dot-${i}" title="${this.escapeHtml(s.label)}">${i + 1}</div>`).join('<div class="wizard-progress-line"></div>')}
   </div>
   <div class="wizard-body">
     ${stepsHtml}
@@ -664,9 +754,23 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Handle wizard execution — generate code from template and insert into Lua file
+   * Handle wizard execution — dispatch based on action type
    */
   private async handleExecuteWizard(
+    document: vscode.TextDocument,
+    message: { file: string; target: string; action: string; generatedCode: string; commands?: string; cwd?: string }
+  ): Promise<void> {
+    if (message.action === 'run') {
+      await this.handleExecuteWizardRun(document, message);
+    } else {
+      await this.handleExecuteWizardAppend(document, message);
+    }
+  }
+
+  /**
+   * Handle wizard 'append' action — generate code from template and insert into Lua file
+   */
+  private async handleExecuteWizardAppend(
     document: vscode.TextDocument,
     message: { file: string; target: string; action: string; generatedCode: string }
   ): Promise<void> {
@@ -697,11 +801,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
 
       // Find the insertion point: before the closing } of the table
-      // result.node.range[1] is the end of the table expression
       const tableEndPos = result.node.range[1];
-
-      // Find the last `}` which closes this table
-      // We need to insert before it, maintaining proper indentation
       const beforeTable = luaCode.substring(0, tableEndPos);
       const closingBraceIdx = beforeTable.lastIndexOf('}');
 
@@ -724,15 +824,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
       // Build the insertion text
       const codeToInsert = message.generatedCode.trim();
-      // Check if the line before closing brace already has a comma
       const textBeforeBrace = luaCode.substring(0, closingBraceIdx);
       const trimmedBefore = textBeforeBrace.trimEnd();
       const needsComma = !trimmedBefore.endsWith(',') && !trimmedBefore.endsWith('{');
 
-      // Insert the new entry, handling comma and indentation
       let newCode: string;
       if (needsComma) {
-        // Add comma after the last entry, then insert new entry
         const whitespaceAfter = textBeforeBrace.substring(trimmedBefore.length);
         newCode = trimmedBefore + ',\n' + entryIndent + codeToInsert + '\n' + whitespaceAfter.replace(/^\n/, '') + luaCode.substring(closingBraceIdx);
       } else {
@@ -742,16 +839,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       // Calculate the line number of the inserted code
       let insertedLine: number;
       if (needsComma) {
-        // Comma was appended to trimmedBefore, then newline + entry
         insertedLine = trimmedBefore.split('\n').length + 1;
       } else {
         insertedLine = textBeforeBrace.split('\n').length;
       }
 
-      // Write file
       fs.writeFileSync(luaPath, newCode, 'utf-8');
-
-      // Clear cache
       this.luaLinker.clearCache(luaPath);
 
       // Show success with "Jump to Code" option
@@ -769,7 +862,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           viewColumn: existingColumn || vscode.ViewColumn.Beside,
           preserveFocus: false
         });
-        // Scroll to and highlight the inserted line
         const targetLine = Math.max(0, insertedLine - 1);
         const range = new vscode.Range(targetLine, 0, targetLine, doc.lineAt(targetLine).text.length);
         editor.selection = new vscode.Selection(range.start, range.end);
@@ -780,6 +872,109 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         vscode.l10n.t('Wizard execution failed: {0}', error instanceof Error ? error.message : String(error))
       );
     }
+  }
+
+  /**
+   * Handle wizard 'run' action — execute shell commands sequentially
+   */
+  private async handleExecuteWizardRun(
+    document: vscode.TextDocument,
+    message: { commands?: string; cwd?: string }
+  ): Promise<void> {
+    const commandsStr = (message.commands || '').trim();
+    if (!commandsStr) {
+      vscode.window.showErrorMessage(vscode.l10n.t('No commands to execute'));
+      return;
+    }
+
+    // Parse commands: split by newline, filter empty/comment lines
+    const commands = commandsStr
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && !line.startsWith('#'));
+
+    if (commands.length === 0) {
+      vscode.window.showErrorMessage(vscode.l10n.t('No commands to execute'));
+      return;
+    }
+
+    // Determine working directory
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || path.dirname(document.uri.fsPath);
+    const cwd = message.cwd
+      ? path.resolve(workspaceRoot, message.cwd)
+      : workspaceRoot;
+
+    // Confirm execution
+    const confirm = await vscode.window.showWarningMessage(
+      vscode.l10n.t('Execute {0} command(s) in {1}?', commands.length, cwd),
+      { modal: true, detail: commands.join('\n') },
+      vscode.l10n.t('Execute')
+    );
+
+    if (!confirm) return;
+
+    // Create output channel for logging
+    const outputChannel = vscode.window.createOutputChannel('Wizard Commands');
+    outputChannel.show(true);
+    outputChannel.appendLine(`=== ${vscode.l10n.t('Wizard Command Execution')} ===`);
+    outputChannel.appendLine(`${vscode.l10n.t('Working directory')}: ${cwd}`);
+    outputChannel.appendLine(`${vscode.l10n.t('Commands')}: ${commands.length}`);
+    outputChannel.appendLine('');
+
+    // Execute commands sequentially with progress
+    const { exec } = require('child_process') as typeof import('child_process');
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: vscode.l10n.t('Executing wizard commands...'),
+        cancellable: false,
+      },
+      async (progress) => {
+        let allSuccess = true;
+
+        for (let i = 0; i < commands.length; i++) {
+          const cmd = commands[i];
+          progress.report({
+            message: `(${i + 1}/${commands.length}) ${cmd}`,
+            increment: (100 / commands.length),
+          });
+
+          outputChannel.appendLine(`$ ${cmd}`);
+
+          try {
+            const result = await new Promise<string>((resolve, reject) => {
+              exec(cmd, { cwd, timeout: 60000, encoding: 'utf-8' }, (err: any, stdout: string, stderr: string) => {
+                if (stdout) outputChannel.appendLine(stdout.trimEnd());
+                if (stderr) outputChannel.appendLine(stderr.trimEnd());
+                if (err) {
+                  reject(new Error(`Command failed (exit ${err.code}): ${cmd}\n${stderr || err.message}`));
+                } else {
+                  resolve(stdout);
+                }
+              });
+            });
+            outputChannel.appendLine('');
+          } catch (error) {
+            allSuccess = false;
+            const errMsg = error instanceof Error ? error.message : String(error);
+            outputChannel.appendLine(`❌ ERROR: ${errMsg}`);
+            outputChannel.appendLine('');
+            vscode.window.showErrorMessage(
+              vscode.l10n.t('Command failed: {0}', errMsg)
+            );
+            break; // Stop on first failure
+          }
+        }
+
+        if (allSuccess) {
+          outputChannel.appendLine(`✅ ${vscode.l10n.t('All commands completed successfully')}`);
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('All {0} commands completed successfully!', commands.length)
+          );
+        }
+      }
+    );
   }
 
   /**
@@ -2947,25 +3142,32 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         return values;
       }
 
-      /** Generate code from template */
+      /** Replace {{field}} placeholders in a template string with values */
+      function wizardApplyTemplate(template, values) {
+        var result = template;
+        Object.keys(values).forEach(function(key) {
+          var val = values[key];
+          if (typeof val === 'boolean') val = val ? 'true' : 'false';
+          result = result.split('{{' + key + '}}').join(String(val));
+        });
+        return result;
+      }
+
+      /** Generate code/commands from template */
       function wizardGenerateCode(wizardId) {
         var wizardEl = document.getElementById(wizardId);
         if (!wizardEl) return '';
         var data = {};
         try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
-        var template = data.template || '';
+
         var values = wizardCollectValues(wizardId);
+        // Also include resolved variables for placeholder replacement
+        var resolvedVars = data.resolvedVars || {};
+        var allValues = Object.assign({}, resolvedVars, values);
 
-        // Replace {{field}} placeholders
-        var code = template;
-        Object.keys(values).forEach(function(key) {
-          var val = values[key];
-          // For booleans: true/false (Lua format)
-          if (typeof val === 'boolean') val = val ? 'true' : 'false';
-          code = code.split('{{' + key + '}}').join(String(val));
-        });
-
-        return code;
+        // Choose the right template based on action
+        var template = data.action === 'run' ? (data.commands || '') : (data.template || '');
+        return wizardApplyTemplate(template, allValues);
       }
 
       /** Execute wizard: show preview */
@@ -3010,15 +3212,23 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (!wizardEl) return;
         var data = {};
         try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
-        var code = wizardGenerateCode(wizardId);
+        var generated = wizardGenerateCode(wizardId);
 
-        vscode.postMessage({
+        var msg = {
           type: 'executeWizard',
           file: data.file || '',
           target: data.target || '',
           action: data.action || 'append',
-          generatedCode: code
-        });
+          generatedCode: generated
+        };
+
+        // For 'run' action, also pass the resolved commands and cwd
+        if (data.action === 'run') {
+          msg.commands = generated;
+          msg.cwd = data.cwd || '.';
+        }
+
+        vscode.postMessage(msg);
 
         // Success animation
         wizardEl.classList.add('wizard-success');

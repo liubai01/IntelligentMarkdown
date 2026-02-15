@@ -1,15 +1,29 @@
 /**
  * Wizard block type definitions
- * Defines multi-step wizard for generating and inserting code from templates
+ * Defines multi-step wizard for generating and inserting code from templates,
+ * or executing system commands.
  */
 
 /** Wizard step field type */
 export type WizardFieldType = 'number' | 'string' | 'boolean' | 'select';
 
+/** Wizard action type */
+export type WizardActionType = 'append' | 'run';
+
 /** Wizard step option (for select type) */
 export interface WizardOption {
   label: string;
   value: string | number;
+}
+
+/** Dynamic variable definition (resolved at render time) */
+export interface WizardVariable {
+  /** Variable type */
+  type: 'json';
+  /** File path (relative to markdown) */
+  file: string;
+  /** JSON path to value (dot-separated, e.g. "version" or "config.name") */
+  path: string;
 }
 
 /** A single wizard step definition */
@@ -38,18 +52,24 @@ export interface WizardStep {
 
 /** Wizard block definition */
 export interface WizardBlock {
-  /** Target Lua file (relative to markdown) */
+  /** Target file (relative to markdown). For 'append': Lua file. For 'run': reference file. */
   file: string;
-  /** Lua table path to insert into (e.g. "ItemsConfig.Weapons") */
-  target: string;
-  /** Action type */
-  action: 'append';
+  /** Target path in file (for 'append' action: Lua table path) */
+  target?: string;
+  /** Action type: 'append' inserts code into Lua, 'run' executes shell commands */
+  action: WizardActionType;
   /** Display label */
   label?: string;
   /** Icon emoji */
   icon?: string;
-  /** Code template with {{variable}} placeholders */
-  template: string;
+  /** Code template with {{variable}} placeholders (for 'append' action) */
+  template?: string;
+  /** Shell commands template with {{variable}} placeholders (for 'run' action) */
+  commands?: string;
+  /** Working directory for shell commands (relative to workspace root, default '.') */
+  cwd?: string;
+  /** Dynamic variables resolved from files */
+  variables?: Record<string, WizardVariable>;
   /** Wizard steps */
   steps: WizardStep[];
 }
