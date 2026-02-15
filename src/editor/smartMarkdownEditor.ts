@@ -130,6 +130,65 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const wizardBlocks = this.wizardParser.parseMarkdown(text);
 
     webview.html = this.getHtmlContent(webview, text, linkedBlocks, document.uri.fsPath, wizardBlocks);
+
+    // Phase 2: Send heavy block data asynchronously for progressive loading
+    this.sendDeferredBlockData(webview, linkedBlocks);
+  }
+
+  /**
+   * Send heavy block data (tables, code editors) to webview asynchronously.
+   * Each block is sent with a small delay so the UI can render progressively.
+   */
+  private sendDeferredBlockData(
+    webview: vscode.Webview,
+    linkedBlocks: LinkedConfigBlock[]
+  ): void {
+    const heavyBlocks: Array<{ blockId: string; block: LinkedConfigBlock }> = [];
+
+    for (const block of linkedBlocks) {
+      if (block.linkStatus !== 'ok') { continue; }
+      const blockId = this.generateBlockId(block);
+      if (block.type === 'table' || block.type === 'code') {
+        heavyBlocks.push({ blockId, block });
+      }
+    }
+
+    // Send each heavy block with incremental delay
+    const DELAY_STEP = 50; // ms between each block
+    heavyBlocks.forEach(({ blockId, block }, index) => {
+      setTimeout(() => {
+        if (block.type === 'table') {
+          const tableData = block.luaNode?.tableData;
+          if (!tableData || tableData.length === 0) { return; }
+
+          const rowData = tableData.map(row => row.data);
+          const rowLocations = tableData.map(row => ({
+            line: row.rowLoc?.start.line || 0,
+            file: block.absoluteFilePath || ''
+          }));
+
+          webview.postMessage({
+            type: 'initBlock',
+            blockType: 'table',
+            blockId,
+            columns: block.columns,
+            rows: rowData,
+            rowLocations,
+            rowCount: tableData.length
+          });
+        } else if (block.type === 'code') {
+          const normData = this.codeNormCache.get(blockId);
+          webview.postMessage({
+            type: 'initBlock',
+            blockType: 'code',
+            blockId,
+            originalCode: normData?.normalized || block.currentValue || '',
+            lang: 'lua',
+            baseIndent: normData?.baseIndent || ''
+          });
+        }
+      }, DELAY_STEP * (index + 1));
+    });
   }
 
   /**
@@ -1291,34 +1350,41 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
     // Use already linked table data
     const tableData = block.luaNode?.tableData;
-    
+
     if (!tableData || tableData.length === 0) {
       return `<div class="table-empty">${t('No data')}</div>`;
     }
 
-    // Serialize column definitions and row data as JSON for the Tabulator bundle
-    const columnsJson = this.escapeHtml(JSON.stringify(block.columns));
-    const rowData = tableData.map(row => row.data);
-    const dataJson = this.escapeHtml(JSON.stringify(rowData));
+    // Render a loading skeleton — actual data will be sent via postMessage (async)
+    const rowCount = tableData.length;
+    const colCount = block.columns.length;
 
-    // Build row location info for "goto source" feature
-    const rowLocations = tableData.map(row => ({
-      line: row.rowLoc?.start.line || 0,
-      file: block.absoluteFilePath || ''
-    }));
-    const rowLocationsJson = this.escapeHtml(JSON.stringify(rowLocations));
+    // Generate skeleton rows for visual feedback
+    let skeletonRows = '';
+    const previewRows = Math.min(rowCount, 5);
+    for (let r = 0; r < previewRows; r++) {
+      skeletonRows += '<div class="skeleton-row">';
+      for (let c = 0; c < Math.min(colCount, 6); c++) {
+        skeletonRows += '<div class="skeleton-cell"></div>';
+      }
+      skeletonRows += '</div>';
+    }
 
     return `
 <div class="table-wrapper">
   <div class="table-toolbar">
-    <span class="table-info">${t('{0} rows', tableData.length)}</span>
+    <span class="table-info">${t('{0} rows', rowCount)}</span>
     <button class="table-filter-btn" onclick="TabulatorGrid.clearFilters('${blockId}-tabulator')" title="${t('Clear all filters')}">🧹 ${t('Clear Filters')}</button>
   </div>
-  <div class="tabulator-container" id="${blockId}-tabulator"
-    data-block-id="${blockId}"
-    data-columns="${columnsJson}"
-    data-rows="${dataJson}"
-    data-row-locations="${rowLocationsJson}">
+  <div class="tabulator-container deferred-loading" id="${blockId}-tabulator"
+    data-block-id="${blockId}">
+    <div class="loading-skeleton" id="${blockId}-skeleton">
+      <div class="skeleton-header">
+        <div class="skeleton-spinner"></div>
+        <span>${t('Loading table ({0} rows, {1} columns)...', rowCount, colCount)}</span>
+      </div>
+      ${skeletonRows}
+    </div>
   </div>
 </div>`;
   }
@@ -1330,7 +1396,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     const t = vscode.l10n.t;
     const functionSource = block.currentValue || '-- No function found';
 
-    // Indent normalization
+    // Indent normalization (cache for async init later)
     const { normalized, baseIndent } = this.normalizeIndentation(functionSource);
     this.codeNormCache.set(blockId, { normalized, baseIndent });
 
@@ -1354,7 +1420,21 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     </button>` : ''}
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
-  <div class="code-cm-container" id="${blockId}-cm"></div>
+  <div class="code-cm-container deferred-loading" id="${blockId}-cm">
+    <div class="loading-skeleton" id="${blockId}-cm-skeleton">
+      <div class="skeleton-header">
+        <div class="skeleton-spinner"></div>
+        <span>${t('Loading code editor...')}</span>
+      </div>
+      <div class="skeleton-code-lines">
+        <div class="skeleton-code-line" style="width:80%"></div>
+        <div class="skeleton-code-line" style="width:60%"></div>
+        <div class="skeleton-code-line" style="width:90%"></div>
+        <div class="skeleton-code-line" style="width:50%"></div>
+        <div class="skeleton-code-line" style="width:70%"></div>
+      </div>
+    </div>
+  </div>
 </div>`;
   }
 
@@ -2488,6 +2568,73 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       /* ========== Wizard Block ========== */
+      /* ========== Loading Skeleton & Progressive Loading ========== */
+      .loading-skeleton {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .skeleton-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--color-fg-muted);
+        margin-bottom: 8px;
+      }
+      .skeleton-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(128,128,128,0.3);
+        border-top: 2px solid var(--vscode-button-background, #0078d4);
+        border-radius: 50%;
+        animation: skeletonSpin 0.8s linear infinite;
+      }
+      @keyframes skeletonSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .skeleton-row {
+        display: flex;
+        gap: 8px;
+        height: 24px;
+      }
+      .skeleton-cell {
+        flex: 1;
+        background: linear-gradient(90deg, rgba(128,128,128,0.1) 25%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 75%);
+        background-size: 200% 100%;
+        animation: skeletonShimmer 1.5s ease-in-out infinite;
+        border-radius: 4px;
+      }
+      @keyframes skeletonShimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      .skeleton-code-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 0;
+      }
+      .skeleton-code-line {
+        height: 14px;
+        background: linear-gradient(90deg, rgba(128,128,128,0.1) 25%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 75%);
+        background-size: 200% 100%;
+        animation: skeletonShimmer 1.5s ease-in-out infinite;
+        border-radius: 3px;
+      }
+      .deferred-loading {
+        min-height: 80px;
+      }
+      .block-loaded {
+        animation: blockFadeIn 0.3s ease-out;
+      }
+      @keyframes blockFadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
       .wizard-block {
         border: 2px solid var(--vscode-button-background, var(--color-accent));
         border-radius: 10px;
@@ -2884,40 +3031,92 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       /** Initialize all Tabulator table instances */
-      function initTabulatorTables() {
-        if (typeof TabulatorGrid === 'undefined') return;
+      /** Initialize a deferred heavy block received via postMessage */
+      function initDeferredBlock(msg) {
+        if (msg.blockType === 'table') {
+          initDeferredTable(msg);
+        } else if (msg.blockType === 'code') {
+          initDeferredCodeEditor(msg);
+        }
+      }
 
-        document.querySelectorAll('.tabulator-container').forEach(function(el) {
-          var containerId = el.id;
-          var rawBlockId = el.getAttribute('data-block-id');
-          var columnsJson = el.getAttribute('data-columns');
-          var rowsJson = el.getAttribute('data-rows');
-          var rowLocsJson = el.getAttribute('data-row-locations');
-          if (!columnsJson || !rowsJson || !rawBlockId) return;
+      /** Initialize a deferred Tabulator table */
+      function initDeferredTable(msg) {
+        if (typeof TabulatorGrid === 'undefined') { return; }
+        var containerId = msg.blockId + '-tabulator';
+        var container = document.getElementById(containerId);
+        if (!container) { return; }
 
-          try {
-            var columns = JSON.parse(columnsJson);
-            var rows = JSON.parse(rowsJson);
-            var rowLocations = rowLocsJson ? JSON.parse(rowLocsJson) : [];
-            TabulatorGrid.create(containerId, columns, rows, {
-              onCellEdited: function(rowIndex, colKey, value) {
-                updateTableCell(rawBlockId, rowIndex, colKey, value);
-              },
-              onGotoSource: function(rowIndex) {
-                var loc = rowLocations[rowIndex];
-                if (loc && loc.file && loc.line) {
-                  vscode.postMessage({
-                    type: 'gotoSource',
-                    file: loc.file,
-                    line: loc.line
-                  });
-                }
+        // Remove skeleton
+        var skeleton = document.getElementById(msg.blockId + '-skeleton');
+        if (skeleton) { skeleton.remove(); }
+        container.classList.remove('deferred-loading');
+
+        try {
+          var rowLocations = msg.rowLocations || [];
+          TabulatorGrid.create(containerId, msg.columns, msg.rows, {
+            onCellEdited: function(rowIndex, colKey, value) {
+              updateTableCell(msg.blockId, rowIndex, colKey, value);
+            },
+            onGotoSource: function(rowIndex) {
+              var loc = rowLocations[rowIndex];
+              if (loc && loc.file && loc.line) {
+                vscode.postMessage({
+                  type: 'gotoSource',
+                  file: loc.file,
+                  line: loc.line
+                });
               }
-            });
-          } catch (e) {
-            console.error('Tabulator init error for ' + containerId, e);
-          }
-        });
+            }
+          });
+          // Fade-in animation
+          container.classList.add('block-loaded');
+        } catch (e) {
+          console.error('Deferred Tabulator init error for ' + containerId, e);
+          container.innerHTML = '<div style="color:var(--vscode-errorForeground);padding:8px;">Table load failed: ' + e.message + '</div>';
+        }
+      }
+
+      /** Initialize a deferred CodeMirror editor */
+      function initDeferredCodeEditor(msg) {
+        if (typeof CodeEditor === 'undefined') { return; }
+        var container = document.getElementById(msg.blockId + '-cm');
+        if (!container) { return; }
+
+        // Remove skeleton
+        var skeleton = document.getElementById(msg.blockId + '-cm-skeleton');
+        if (skeleton) { skeleton.remove(); }
+        container.classList.remove('deferred-loading');
+
+        // Update blockData with the received code info
+        if (blockData[msg.blockId]) {
+          blockData[msg.blockId].originalCode = msg.originalCode;
+          blockData[msg.blockId].baseIndent = msg.baseIndent;
+          blockData[msg.blockId].lang = msg.lang;
+        }
+
+        try {
+          var data = blockData[msg.blockId];
+          CodeEditor.create(
+            msg.blockId,
+            container,
+            msg.originalCode,
+            msg.lang || 'lua',
+            function(code) {
+              var modified = code !== (data ? data.originalCode : msg.originalCode);
+              var hint = document.getElementById(msg.blockId + '-modified');
+              if (hint) { hint.style.display = modified ? 'flex' : 'none'; }
+            },
+            function() {
+              saveCode(msg.blockId);
+            }
+          );
+          // Fade-in animation
+          container.classList.add('block-loaded');
+        } catch (e) {
+          console.error('Deferred CodeEditor init error for ' + msg.blockId, e);
+          container.innerHTML = '<div style="color:var(--vscode-errorForeground);padding:8px;">Code editor load failed: ' + e.message + '</div>';
+        }
       }
 
       function adjustNumber(blockId, delta) {
@@ -2950,36 +3149,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       /* ========== 代码编辑器 (CodeMirror 6) ========== */
-
-      /** 初始化所有 CodeMirror 编辑器 */
-      function initCodeEditors() {
-        if (typeof CodeEditor === 'undefined') return;
-
-        Object.keys(blockData).forEach(function(blockId) {
-          const data = blockData[blockId];
-          if (data.type !== 'code') return;
-
-          const container = document.getElementById(blockId + '-cm');
-          if (!container) return;
-
-          CodeEditor.create(
-            blockId,
-            container,
-            data.originalCode,
-            data.lang || 'lua',
-            function(code) {
-              // 修改检测回调
-              const modified = code !== data.originalCode;
-              const hint = document.getElementById(blockId + '-modified');
-              if (hint) hint.style.display = modified ? 'flex' : 'none';
-            },
-            function() {
-              // Ctrl+S / Cmd+S 保存回调
-              saveCode(blockId);
-            }
-          );
-        });
-      }
 
       /** 重置代码到原始内容 */
       function resetCode(blockId) {
@@ -3025,16 +3194,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      // 初始化 CodeMirror 编辑器
-      initCodeEditors();
-
-      // 初始化 Mermaid 图表渲染
+      // 初始化 Mermaid 图表渲染 (lightweight, keep synchronous)
       if (typeof MermaidRenderer !== 'undefined') {
         MermaidRenderer.renderAll();
       }
 
-      // 初始化 Tabulator 表格
-      initTabulatorTables();
+      // Heavy blocks (tables, code editors) are initialized asynchronously
+      // via initBlock messages from the extension host
 
       /* ========== Copy & Send to AI Context ========== */
 
@@ -3118,6 +3284,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
         if (msg && msg.type === 'wizardResult') {
           wizardShowResult(msg.wizardId, msg.success, msg.message || '');
+        }
+        if (msg && msg.type === 'initBlock') {
+          initDeferredBlock(msg);
         }
       });
 
