@@ -22,8 +22,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private probeScanner: ProbeScanner;
   /** Code block indent normalization cache (rebuilt on each render) */
   private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
+  /** Whether the extension is running inside Cursor IDE */
+  private readonly isCursorIDE: boolean;
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.isCursorIDE = vscode.env.appName.toLowerCase().includes('cursor');
     this.configParser = new ConfigBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
@@ -70,8 +73,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await vscode.env.clipboard.writeText(message.text || '');
             webviewPanel.webview.postMessage({ type: 'clipboardDone' });
             break;
-          case 'sendToComposer':
-            await this.handleSendToComposer(message);
+          case 'addFileToChat':
+            await this.handleAddFileToChat(message);
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
@@ -270,42 +273,42 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Handle "Send to AI" — build context with source location and send to Cursor composer
+   * Handle "Add to Chat" — add source file as @file reference in Cursor composer (like native drag-and-drop)
    */
-  private async handleSendToComposer(
-    message: { text: string; sourceLocation: string }
+  private async handleAddFileToChat(
+    message: { absoluteFilePath: string }
   ): Promise<void> {
     try {
-      const contextText = message.text || '';
-      const sourceLocation = message.sourceLocation || '';
+      const filePath = message.absoluteFilePath;
+      if (!filePath) {
+        vscode.window.showWarningMessage(vscode.l10n.t('Source file path not available'));
+        return;
+      }
 
-      // Build a prompt that includes the source file reference
-      const prompt = sourceLocation
-        ? `${vscode.l10n.t('The following code is from')} \`${sourceLocation}\`:\n\n${contextText}`
-        : contextText;
+      const fileUri = vscode.Uri.file(filePath);
 
-      // Try to use Cursor's deeplink.prompt.prefill (creates new chat with confirmation dialog)
+      // Use Cursor's native "Add Files to Composer" command — creates @file reference like drag-and-drop
       try {
-        await vscode.commands.executeCommand('deeplink.prompt.prefill', { text: prompt });
+        await vscode.commands.executeCommand('composer.addfilestocomposer', fileUri);
       } catch {
-        // Fallback: copy to clipboard and focus composer
-        await vscode.env.clipboard.writeText(prompt);
+        // Fallback: try to focus composer first, then retry
         try {
           await vscode.commands.executeCommand('composer.focusComposer');
+          await vscode.commands.executeCommand('composer.addfilestocomposer', fileUri);
         } catch {
-          // If composer command not available, try generic chat
-          try {
-            await vscode.commands.executeCommand('workbench.action.chat.open');
-          } catch {
-            // ignore
-          }
+          // Final fallback: copy workspace-relative path to clipboard
+          const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const relativePath = workspaceRoot
+            ? path.relative(workspaceRoot, filePath).replace(/\\/g, '/')
+            : filePath;
+          await vscode.env.clipboard.writeText(relativePath);
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('File path copied: {0}', relativePath)
+          );
         }
-        vscode.window.showInformationMessage(
-          vscode.l10n.t('Code context copied to clipboard. Press Ctrl+V to paste into chat.')
-        );
       }
     } catch (error) {
-      vscode.window.showErrorMessage(vscode.l10n.t('Failed to send to AI'));
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to add file to chat'));
     }
   }
 
@@ -844,9 +847,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context (Ctrl+V to paste)')}">
       📋 ${t('Copy as Context')}
     </button>
-    <button class="code-btn code-ai-btn" onclick="sendCodeToComposer('${blockId}')" title="${t('Copy source location and send to Cursor AI chat')}">
-      🤖 ${t('Send to AI')}
-    </button>
+    ${this.isCursorIDE ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to Cursor AI chat as @file reference')}">
+      🤖 ${t('Add to Chat')}
+    </button>` : ''}
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
   <div class="code-cm-container" id="${blockId}-cm"></div>
@@ -2235,28 +2238,16 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      /** Build source location reference string */
-      function buildSourceLocation(blockId) {
+      /** Add source file to Cursor AI chat as @file reference (like native drag-and-drop) */
+      function addFileToChat(blockId) {
         var data = blockData[blockId];
-        if (!data) return '';
-        var filePath = data.absoluteFilePath || data.file || '';
-        var startLine = data.startLine || 0;
-        var endLine = data.endLine || 0;
-        var lineRange = startLine ? (endLine && endLine !== startLine ? startLine + '-' + endLine : '' + startLine) : '';
-        return filePath + (lineRange ? ':' + lineRange : '');
-      }
-
-      /** Send code context with source location to Cursor AI composer */
-      function sendCodeToComposer(blockId) {
-        var contextText = buildCodeContext(blockId);
-        var sourceLocation = buildSourceLocation(blockId);
-        if (contextText) {
-          vscode.postMessage({
-            type: 'sendToComposer',
-            text: contextText,
-            sourceLocation: sourceLocation
-          });
-        }
+        if (!data) return;
+        var filePath = data.absoluteFilePath || '';
+        if (!filePath) return;
+        vscode.postMessage({
+          type: 'addFileToChat',
+          absoluteFilePath: filePath
+        });
       }
 
 
