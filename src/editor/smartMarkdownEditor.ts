@@ -319,12 +319,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'codeEditor.js')
     );
 
+    // Mermaid bundle URI
+    const mermaidScriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mermaid.js')
+    );
+
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
   <title>${vscode.l10n.t('Config Preview')}</title>
   <style>
     ${this.getStyles()}
@@ -340,6 +345,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     </div>
   </div>
   <script src="${codeEditorScriptUri}"></script>
+  <script src="${mermaidScriptUri}"></script>
   <script>
     ${this.getScript(linkedBlocks)}
   </script>
@@ -366,6 +372,22 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       html = html.replace(block.rawText, placeholder);
     }
 
+    // Step 1.5: Replace mermaid code blocks with placeholders
+    let mermaidIndex = 0;
+    const mermaidRegex = /```mermaid\s*\n([\s\S]*?)```/g;
+    let match;
+    while ((match = mermaidRegex.exec(html)) !== null) {
+      const fullMatch = match[0];
+      const mermaidCode = match[1].trim();
+      const placeholder = `__MERMAID_BLOCK_PLACEHOLDER_${mermaidIndex}__`;
+      const mermaidHtml = this.renderMermaidBlock(mermaidCode, mermaidIndex);
+      placeholders.set(placeholder, mermaidHtml);
+      html = html.replace(fullMatch, placeholder);
+      mermaidIndex++;
+      // Reset regex since we modified the string
+      mermaidRegex.lastIndex = 0;
+    }
+
     // Step 2: Markdown conversion
     html = this.simpleMarkdownToHtml(html);
 
@@ -375,6 +397,25 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     }
 
     return html;
+  }
+
+  /**
+   * Render mermaid diagram block
+   */
+  private renderMermaidBlock(code: string, index: number): string {
+    const escapedCode = this.escapeHtml(code)
+      .replace(/\n/g, '&#10;');
+
+    return `
+<div class="mermaid-block">
+  <div class="mermaid-header">
+    <span class="mermaid-icon">📊</span>
+    <span class="mermaid-label">Mermaid Diagram</span>
+  </div>
+  <div class="mermaid-diagram" id="mermaid-${index}" data-mermaid-code="${escapedCode}">
+    <div class="mermaid-loading">⏳ ${vscode.l10n.t('Rendering diagram...')}</div>
+  </div>
+</div>`;
   }
 
   /**
@@ -707,11 +748,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       // 跳过占位符周围的空行
       if (line.trim() === '' && 
-          (result.length > 0 && result[result.length - 1].includes('__CONFIG_BLOCK_PLACEHOLDER_'))) {
+          (result.length > 0 && (result[result.length - 1].includes('__CONFIG_BLOCK_PLACEHOLDER_') || result[result.length - 1].includes('__MERMAID_BLOCK_PLACEHOLDER_')))) {
         continue;
       }
       if (line.trim() === '' && 
-          i + 1 < lines.length && lines[i + 1].includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+          i + 1 < lines.length && (lines[i + 1].includes('__CONFIG_BLOCK_PLACEHOLDER_') || lines[i + 1].includes('__MERMAID_BLOCK_PLACEHOLDER_'))) {
         continue;
       }
 
@@ -745,7 +786,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       // 占位符直接输出
-      if (line.includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+      if (line.includes('__CONFIG_BLOCK_PLACEHOLDER_') || line.includes('__MERMAID_BLOCK_PLACEHOLDER_')) {
         result.push(line);
         continue;
       }
@@ -759,7 +800,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             !lastLine.endsWith('</h2>') && 
             !lastLine.endsWith('</h3>') && 
             !lastLine.endsWith('</blockquote>') &&
-            !lastLine.includes('__CONFIG_BLOCK_PLACEHOLDER_')) {
+            !lastLine.includes('__CONFIG_BLOCK_PLACEHOLDER_') &&
+            !lastLine.includes('__MERMAID_BLOCK_PLACEHOLDER_')) {
           result.push('<br>');
         }
         continue;
@@ -1451,6 +1493,70 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         line-height: 1.6;
       }
 
+      /* ========== Mermaid 图表样式 ========== */
+      .mermaid-block {
+        position: relative;
+        background: var(--color-canvas-subtle);
+        border: 1px solid var(--color-border-muted);
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 8px 0;
+        transition: border-color 0.15s;
+      }
+
+      .mermaid-block:hover {
+        border-color: var(--color-accent);
+      }
+
+      .mermaid-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .mermaid-icon {
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .mermaid-label {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--color-fg-muted);
+      }
+
+      .mermaid-diagram {
+        width: 100%;
+        overflow-x: auto;
+        display: flex;
+        justify-content: center;
+        padding: 8px 0;
+      }
+
+      .mermaid-diagram svg {
+        max-width: 100%;
+        height: auto;
+      }
+
+      .mermaid-loading {
+        padding: 16px;
+        text-align: center;
+        color: var(--color-fg-muted);
+        font-size: 13px;
+      }
+
+      .mermaid-error .mermaid-error-msg {
+        padding: 12px;
+        color: var(--color-danger);
+        background: rgba(207, 34, 46, 0.06);
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       /* ========== 更新动画 ========== */
       @keyframes flash {
         0% { background-color: rgba(26, 127, 55, 0.15); }
@@ -1669,6 +1775,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       // 初始化 CodeMirror 编辑器
       initCodeEditors();
+
+      // 初始化 Mermaid 图表渲染
+      if (typeof MermaidRenderer !== 'undefined') {
+        MermaidRenderer.renderAll();
+      }
 
       function gotoSource(file, line) {
         vscode.postMessage({
