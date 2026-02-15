@@ -7,16 +7,19 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
+import { WizardBlockParser } from '../core/parser/wizardBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { LuaParser } from '../core/parser/luaParser';
 import { LuaPatcher } from '../core/patcher/luaPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
+import { ParsedWizardBlock, WizardStep } from '../types';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
 
   private configParser: ConfigBlockParser;
+  private wizardParser: WizardBlockParser;
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
   private probeScanner: ProbeScanner;
@@ -28,6 +31,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   constructor(private readonly context: vscode.ExtensionContext) {
     this.isCursorIDE = vscode.env.appName.toLowerCase().includes('cursor');
     this.configParser = new ConfigBlockParser();
+    this.wizardParser = new WizardBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
     this.probeScanner = new ProbeScanner();
@@ -76,6 +80,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           case 'addFileToChat':
             await this.handleAddFileToChat(message);
             break;
+          case 'executeWizard':
+            await this.handleExecuteWizard(document, message);
+            await this.updateWebview(document, webviewPanel.webview);
+            break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
             break;
@@ -115,8 +123,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const text = document.getText();
     const blocks = this.configParser.parseMarkdown(text);
     const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
+    const wizardBlocks = this.wizardParser.parseMarkdown(text);
 
-    webview.html = this.getHtmlContent(webview, text, linkedBlocks, document.uri.fsPath);
+    webview.html = this.getHtmlContent(webview, text, linkedBlocks, document.uri.fsPath, wizardBlocks);
   }
 
   /**
@@ -420,13 +429,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     webview: vscode.Webview,
     markdownText: string,
     linkedBlocks: LinkedConfigBlock[],
-    documentPath: string
+    documentPath: string,
+    wizardBlocks: ParsedWizardBlock[] = []
   ): string {
     // Clear indent normalization cache
     this.codeNormCache.clear();
 
     // Convert markdown to HTML and replace config blocks with controls
-    const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks, documentPath);
+    const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks, documentPath, wizardBlocks);
 
     // CodeMirror bundle URI
     const codeEditorScriptUri = webview.asWebviewUri(
@@ -471,7 +481,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   <script src="${mermaidScriptUri}"></script>
   <script src="${tabulatorScriptUri}"></script>
   <script>
-    ${this.getScript(linkedBlocks)}
+    ${this.getScript(linkedBlocks, wizardBlocks)}
   </script>
 </body>
 </html>`;
@@ -483,7 +493,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private renderMarkdownWithControls(
     markdownText: string,
     linkedBlocks: LinkedConfigBlock[],
-    documentPath: string
+    documentPath: string,
+    wizardBlocks: ParsedWizardBlock[] = []
   ): string {
     let html = markdownText;
 
@@ -495,6 +506,15 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const controlHtml = this.renderConfigControl(block);
       placeholders.set(placeholder, controlHtml);
       html = html.replace(block.rawText, placeholder);
+    }
+
+    // Step 1.1: Replace wizard blocks with placeholders
+    for (let i = 0; i < wizardBlocks.length; i++) {
+      const wizard = wizardBlocks[i];
+      const placeholder = `__WIZARD_BLOCK_PLACEHOLDER_${i}__`;
+      const wizardHtml = this.renderWizardBlock(wizard, i, documentPath);
+      placeholders.set(placeholder, wizardHtml);
+      html = html.replace(wizard.rawText, placeholder);
     }
 
     // Compute mdDir early (needed by mermaid probe clicks and probe links)
@@ -528,6 +548,211 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     }
 
     return html;
+  }
+
+  /**
+   * Render a wizard block as a multi-step form UI
+   */
+  private renderWizardBlock(wizard: ParsedWizardBlock, index: number, documentPath: string): string {
+    const wizardId = `wizard-${index}`;
+    const icon = wizard.icon || '🧙';
+    const label = wizard.label || vscode.l10n.t('Code Wizard');
+    const totalSteps = wizard.steps.length;
+
+    // Resolve absolute file path for the target
+    const mdDir = path.dirname(documentPath);
+    const absoluteFilePath = this.pathResolver.resolve(mdDir, wizard.file);
+
+    // Build step forms
+    let stepsHtml = '';
+    for (let i = 0; i < wizard.steps.length; i++) {
+      const step = wizard.steps[i];
+      const stepId = `${wizardId}-step-${i}`;
+      const isFirst = i === 0;
+      const isLast = i === wizard.steps.length - 1;
+
+      stepsHtml += `
+        <div class="wizard-step" id="${stepId}" style="display: ${isFirst ? 'block' : 'none'};">
+          <div class="wizard-step-header">
+            <span class="wizard-step-badge">${vscode.l10n.t('Step')} ${i + 1} / ${totalSteps}</span>
+            <span class="wizard-step-title">${this.escapeHtml(step.label)}</span>
+          </div>
+          ${step.description ? `<div class="wizard-step-desc">${this.escapeHtml(step.description)}</div>` : ''}
+          <div class="wizard-step-input">
+            ${this.renderWizardStepInput(wizardId, step, i)}
+          </div>
+          <div class="wizard-step-actions">
+            ${!isFirst ? `<button class="wizard-btn wizard-btn-secondary" onclick="wizardPrevStep('${wizardId}', ${i})">⬅ ${vscode.l10n.t('Previous')}</button>` : '<div></div>'}
+            ${!isLast
+              ? `<button class="wizard-btn wizard-btn-primary" onclick="wizardNextStep('${wizardId}', ${i})">${vscode.l10n.t('Next')} ➡</button>`
+              : `<button class="wizard-btn wizard-btn-success" onclick="wizardExecute('${wizardId}')">✅ ${vscode.l10n.t('Create')}</button>`
+            }
+          </div>
+        </div>`;
+    }
+
+    // Preview area
+    const previewHtml = `
+      <div class="wizard-preview" id="${wizardId}-preview" style="display: none;">
+        <div class="wizard-preview-header">${vscode.l10n.t('Preview')}</div>
+        <pre class="wizard-preview-code" id="${wizardId}-preview-code"></pre>
+        <div class="wizard-step-actions">
+          <button class="wizard-btn wizard-btn-secondary" onclick="wizardHidePreview('${wizardId}')">${vscode.l10n.t('Back')}</button>
+          <button class="wizard-btn wizard-btn-success" onclick="wizardConfirm('${wizardId}')">✅ ${vscode.l10n.t('Confirm & Insert')}</button>
+        </div>
+      </div>`;
+
+    // Store wizard data as JSON attribute
+    const wizardData = {
+      file: wizard.file,
+      target: wizard.target,
+      action: wizard.action,
+      template: wizard.template,
+      steps: wizard.steps,
+      absoluteFilePath
+    };
+    const dataAttr = this.escapeHtml(JSON.stringify(wizardData));
+
+    return `
+<div class="wizard-block" id="${wizardId}" data-wizard='${dataAttr}'>
+  <div class="wizard-header">
+    <span class="wizard-icon">${icon}</span>
+    <span class="wizard-title">${this.escapeHtml(label)}</span>
+    <span class="wizard-target" title="${this.escapeHtml(wizard.file)} → ${this.escapeHtml(wizard.target)}">${this.escapeHtml(wizard.target)}</span>
+  </div>
+  <div class="wizard-progress" id="${wizardId}-progress">
+    ${wizard.steps.map((s: WizardStep, i: number) => `<div class="wizard-progress-dot ${i === 0 ? 'active' : ''}" id="${wizardId}-dot-${i}" title="${this.escapeHtml(s.label)}">${i + 1}</div>`).join('<div class="wizard-progress-line"></div>')}
+  </div>
+  <div class="wizard-body">
+    ${stepsHtml}
+    ${previewHtml}
+  </div>
+</div>`;
+  }
+
+  /**
+   * Render input control for a single wizard step
+   */
+  private renderWizardStepInput(wizardId: string, step: WizardStep, stepIndex: number): string {
+    const inputId = `${wizardId}-input-${stepIndex}`;
+    const defaultVal = step.default !== undefined ? step.default : '';
+
+    switch (step.type) {
+      case 'number': {
+        const minAttr = step.min !== undefined ? ` min="${step.min}"` : '';
+        const maxAttr = step.max !== undefined ? ` max="${step.max}"` : '';
+        const stepAttr = step.step !== undefined ? ` step="${step.step}"` : '';
+        return `<input type="number" class="wizard-input" id="${inputId}" value="${defaultVal}"${minAttr}${maxAttr}${stepAttr} />`;
+      }
+      case 'string':
+        return `<input type="text" class="wizard-input" id="${inputId}" value="${this.escapeHtml(String(defaultVal))}" placeholder="${this.escapeHtml(step.label)}" />`;
+      case 'boolean':
+        return `
+          <label class="wizard-checkbox">
+            <input type="checkbox" id="${inputId}" ${defaultVal ? 'checked' : ''} />
+            <span>${defaultVal ? 'true' : 'false'}</span>
+          </label>`;
+      case 'select': {
+        const opts = (step.options || [])
+          .map((o: { label: string; value: string | number }) => `<option value="${this.escapeHtml(String(o.value))}" ${o.value === defaultVal ? 'selected' : ''}>${this.escapeHtml(o.label)}</option>`)
+          .join('');
+        return `<select class="wizard-input" id="${inputId}">${opts}</select>`;
+      }
+      default:
+        return `<input type="text" class="wizard-input" id="${inputId}" value="${this.escapeHtml(String(defaultVal))}" />`;
+    }
+  }
+
+  /**
+   * Handle wizard execution — generate code from template and insert into Lua file
+   */
+  private async handleExecuteWizard(
+    document: vscode.TextDocument,
+    message: { file: string; target: string; action: string; generatedCode: string }
+  ): Promise<void> {
+    try {
+      const mdDir = path.dirname(document.uri.fsPath);
+      const luaPath = this.pathResolver.resolve(mdDir, message.file);
+
+      if (!fs.existsSync(luaPath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', luaPath));
+        return;
+      }
+
+      let luaCode = fs.readFileSync(luaPath, 'utf-8');
+
+      // Parse the Lua file to find the target table
+      const parser = new LuaParser(luaCode);
+      const result = parser.findNodeByPath(message.target);
+
+      if (!result.success || !result.node) {
+        vscode.window.showErrorMessage(vscode.l10n.t('Target not found: {0}', message.target));
+        return;
+      }
+
+      // The target should be a table
+      if (result.node.type !== 'table') {
+        vscode.window.showErrorMessage(vscode.l10n.t('Target is not a table: {0}', message.target));
+        return;
+      }
+
+      // Find the insertion point: before the closing } of the table
+      // result.node.range[1] is the end of the table expression
+      const tableEndPos = result.node.range[1];
+
+      // Find the last `}` which closes this table
+      // We need to insert before it, maintaining proper indentation
+      const beforeTable = luaCode.substring(0, tableEndPos);
+      const closingBraceIdx = beforeTable.lastIndexOf('}');
+
+      if (closingBraceIdx === -1) {
+        vscode.window.showErrorMessage(vscode.l10n.t('Cannot find insertion point in table'));
+        return;
+      }
+
+      // Detect the indentation of existing table entries
+      const tableContent = luaCode.substring(result.node.range[0], result.node.range[1]);
+      const contentLines = tableContent.split('\n');
+      let entryIndent = '        '; // default 8 spaces
+      for (const line of contentLines) {
+        const match = line.match(/^(\s+)\{/);
+        if (match) {
+          entryIndent = match[1];
+          break;
+        }
+      }
+
+      // Build the insertion text
+      const codeToInsert = message.generatedCode.trim();
+      // Check if the line before closing brace already has a comma
+      const textBeforeBrace = luaCode.substring(0, closingBraceIdx);
+      const trimmedBefore = textBeforeBrace.trimEnd();
+      const needsComma = !trimmedBefore.endsWith(',') && !trimmedBefore.endsWith('{');
+
+      // Insert the new entry, handling comma and indentation
+      let newCode: string;
+      if (needsComma) {
+        // Add comma after the last entry, then insert new entry
+        const whitespaceAfter = textBeforeBrace.substring(trimmedBefore.length);
+        newCode = trimmedBefore + ',\n' + entryIndent + codeToInsert + '\n' + whitespaceAfter.replace(/^\n/, '') + luaCode.substring(closingBraceIdx);
+      } else {
+        newCode = luaCode.substring(0, closingBraceIdx) + entryIndent + codeToInsert + '\n' + luaCode.substring(closingBraceIdx);
+      }
+
+      // Write file
+      fs.writeFileSync(luaPath, newCode, 'utf-8');
+
+      // Clear cache
+      this.luaLinker.clearCache(luaPath);
+
+      vscode.window.showInformationMessage(
+        vscode.l10n.t('Successfully inserted new entry into {0}', message.target)
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        vscode.l10n.t('Wizard execution failed: {0}', error instanceof Error ? error.message : String(error))
+      );
+    }
   }
 
   /**
@@ -1971,13 +2196,257 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         font-size: 11px;
         font-family: ui-monospace, monospace;
       }
+
+      /* ========== Wizard Block ========== */
+      .wizard-block {
+        border: 2px solid var(--color-accent);
+        border-radius: 10px;
+        margin: 16px 0;
+        overflow: hidden;
+        background: var(--color-canvas-subtle);
+      }
+
+      .wizard-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, transparent));
+        color: var(--button-fg, #fff);
+        font-weight: 600;
+        font-size: 15px;
+      }
+
+      .wizard-icon { font-size: 20px; }
+
+      .wizard-title { flex: 1; }
+
+      .wizard-target {
+        font-size: 11px;
+        opacity: 0.8;
+        font-weight: 400;
+        font-family: ui-monospace, monospace;
+        background: rgba(255,255,255,0.15);
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      /* Progress bar */
+      .wizard-progress {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--color-border-muted);
+      }
+
+      .wizard-progress-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--color-canvas-subtle);
+        border: 2px solid var(--color-border-default);
+        color: var(--color-fg-muted);
+        transition: all 0.3s;
+        flex-shrink: 0;
+      }
+
+      .wizard-progress-dot.active {
+        background: var(--color-accent);
+        border-color: var(--color-accent);
+        color: var(--button-fg, #fff);
+        transform: scale(1.1);
+      }
+
+      .wizard-progress-dot.done {
+        background: var(--color-success);
+        border-color: var(--color-success);
+        color: #fff;
+      }
+
+      .wizard-progress-line {
+        height: 2px;
+        width: 32px;
+        background: var(--color-border-default);
+        flex-shrink: 0;
+      }
+
+      .wizard-progress-line.done {
+        background: var(--color-success);
+      }
+
+      /* Wizard body */
+      .wizard-body {
+        padding: 16px;
+      }
+
+      .wizard-step {
+        animation: wizardFadeIn 0.3s ease;
+      }
+
+      @keyframes wizardFadeIn {
+        from { opacity: 0; transform: translateX(20px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      .wizard-step-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .wizard-step-badge {
+        background: var(--color-accent);
+        color: var(--button-fg, #fff);
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .wizard-step-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .wizard-step-desc {
+        color: var(--color-fg-muted);
+        font-size: 13px;
+        margin-bottom: 12px;
+        padding-left: 2px;
+      }
+
+      .wizard-step-input {
+        margin-bottom: 16px;
+      }
+
+      .wizard-input {
+        width: 100%;
+        padding: 8px 12px;
+        background: var(--input-bg);
+        color: var(--input-fg);
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      .wizard-input:focus {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+      }
+
+      .wizard-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 8px 0;
+      }
+
+      .wizard-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--color-accent);
+        cursor: pointer;
+      }
+
+      .wizard-step-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding-top: 8px;
+      }
+
+      .wizard-btn {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .wizard-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+      .wizard-btn:active { transform: translateY(0); }
+
+      .wizard-btn-primary {
+        background: var(--color-accent);
+        color: var(--button-fg, #fff);
+      }
+
+      .wizard-btn-secondary {
+        background: var(--color-canvas-subtle);
+        color: var(--color-fg-default);
+        border: 1px solid var(--color-border-default);
+      }
+
+      .wizard-btn-success {
+        background: var(--color-success);
+        color: #fff;
+      }
+
+      /* Preview area */
+      .wizard-preview {
+        animation: wizardFadeIn 0.3s ease;
+      }
+
+      .wizard-preview-header {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-fg-muted);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .wizard-preview-code {
+        background: var(--input-bg);
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        padding: 12px;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-x: auto;
+        color: var(--color-fg-default);
+        margin-bottom: 12px;
+        white-space: pre;
+      }
+
+      /* Success animation */
+      .wizard-block.wizard-success {
+        animation: wizardSuccessPulse 0.5s ease;
+      }
+
+      @keyframes wizardSuccessPulse {
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 40%, transparent); }
+        50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-success) 0%, transparent); }
+        100% { box-shadow: none; }
+      }
     `;
   }
 
   /**
    * Get script
    */
-  private getScript(linkedBlocks: LinkedConfigBlock[]): string {
+  private getScript(linkedBlocks: LinkedConfigBlock[], wizardBlocks: ParsedWizardBlock[] = []): string {
     // Create block data mapping (including code block normalization info)
     const blockDataMap: Record<string, any> = {};
     for (const block of linkedBlocks) {
@@ -2345,6 +2814,145 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       function refresh() {
         vscode.postMessage({ type: 'refresh' });
+      }
+
+      /* ========== Wizard Functions ========== */
+
+      /** Navigate to next wizard step */
+      function wizardNextStep(wizardId, currentStep) {
+        var nextStep = currentStep + 1;
+        var currentEl = document.getElementById(wizardId + '-step-' + currentStep);
+        var nextEl = document.getElementById(wizardId + '-step-' + nextStep);
+        if (currentEl) currentEl.style.display = 'none';
+        if (nextEl) nextEl.style.display = 'block';
+        wizardUpdateProgress(wizardId, nextStep);
+      }
+
+      /** Navigate to previous wizard step */
+      function wizardPrevStep(wizardId, currentStep) {
+        var prevStep = currentStep - 1;
+        var currentEl = document.getElementById(wizardId + '-step-' + currentStep);
+        var prevEl = document.getElementById(wizardId + '-step-' + prevStep);
+        if (currentEl) currentEl.style.display = 'none';
+        if (prevEl) prevEl.style.display = 'block';
+        wizardUpdateProgress(wizardId, prevStep);
+      }
+
+      /** Update progress dots */
+      function wizardUpdateProgress(wizardId, activeStep) {
+        var container = document.getElementById(wizardId + '-progress');
+        if (!container) return;
+        var dots = container.querySelectorAll('.wizard-progress-dot');
+        var lines = container.querySelectorAll('.wizard-progress-line');
+        dots.forEach(function(dot, i) {
+          dot.classList.remove('active', 'done');
+          if (i < activeStep) dot.classList.add('done');
+          else if (i === activeStep) dot.classList.add('active');
+        });
+        lines.forEach(function(line, i) {
+          line.classList.remove('done');
+          if (i < activeStep) line.classList.add('done');
+        });
+      }
+
+      /** Collect all wizard field values */
+      function wizardCollectValues(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return {};
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var steps = data.steps || [];
+        var values = {};
+        steps.forEach(function(step, i) {
+          var input = document.getElementById(wizardId + '-input-' + i);
+          if (!input) return;
+          if (step.type === 'boolean') {
+            values[step.field] = input.checked;
+          } else if (step.type === 'number') {
+            values[step.field] = parseFloat(input.value) || 0;
+          } else {
+            values[step.field] = input.value;
+          }
+        });
+        return values;
+      }
+
+      /** Generate code from template */
+      function wizardGenerateCode(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return '';
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var template = data.template || '';
+        var values = wizardCollectValues(wizardId);
+
+        // Replace {{field}} placeholders
+        var code = template;
+        Object.keys(values).forEach(function(key) {
+          var val = values[key];
+          // For booleans: true/false (Lua format)
+          if (typeof val === 'boolean') val = val ? 'true' : 'false';
+          code = code.split('{{' + key + '}}').join(String(val));
+        });
+
+        return code;
+      }
+
+      /** Execute wizard: show preview */
+      function wizardExecute(wizardId) {
+        var code = wizardGenerateCode(wizardId);
+        var previewEl = document.getElementById(wizardId + '-preview');
+        var previewCode = document.getElementById(wizardId + '-preview-code');
+        if (!previewEl || !previewCode) return;
+
+        previewCode.textContent = code;
+        // Hide all steps
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var steps = data.steps || [];
+        steps.forEach(function(_, i) {
+          var stepEl = document.getElementById(wizardId + '-step-' + i);
+          if (stepEl) stepEl.style.display = 'none';
+        });
+        previewEl.style.display = 'block';
+      }
+
+      /** Hide preview and go back to last step */
+      function wizardHidePreview(wizardId) {
+        var previewEl = document.getElementById(wizardId + '-preview');
+        if (previewEl) previewEl.style.display = 'none';
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var steps = data.steps || [];
+        var lastIdx = steps.length - 1;
+        var lastEl = document.getElementById(wizardId + '-step-' + lastIdx);
+        if (lastEl) lastEl.style.display = 'block';
+        wizardUpdateProgress(wizardId, lastIdx);
+      }
+
+      /** Confirm and execute wizard — post message to extension */
+      function wizardConfirm(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var code = wizardGenerateCode(wizardId);
+
+        vscode.postMessage({
+          type: 'executeWizard',
+          file: data.file || '',
+          target: data.target || '',
+          action: data.action || 'append',
+          generatedCode: code
+        });
+
+        // Success animation
+        wizardEl.classList.add('wizard-success');
+        setTimeout(function() { wizardEl.classList.remove('wizard-success'); }, 500);
       }
     `;
   }
