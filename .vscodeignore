@@ -4,6 +4,7 @@ src/**
 webview/src/**
 node_modules/**
 .gitignore
+.vscode-pat
 *.map
 **/*.ts
 **/*.md
