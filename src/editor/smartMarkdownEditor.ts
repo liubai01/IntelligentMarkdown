@@ -70,16 +70,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await vscode.env.clipboard.writeText(message.text || '');
             webviewPanel.webview.postMessage({ type: 'clipboardDone' });
             break;
-          case 'openChatAndPaste':
-            await vscode.env.clipboard.writeText(message.text || '');
-            // Try to open Cursor chat panel (Cursor-specific command, fails gracefully in vanilla VS Code)
-            try {
-              await vscode.commands.executeCommand('workbench.action.chat.open');
-            } catch {
-              // Silently ignore if command not available
-            }
-            webviewPanel.webview.postMessage({ type: 'clipboardDone' });
-            break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
             break;
@@ -836,9 +826,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     </button>
     <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context (Ctrl+V to paste)')}">
       📋 ${t('Copy as Context')}
-    </button>
-    <button class="code-btn code-ai-btn" onclick="sendCodeToChat('${blockId}')" title="${t('Copy and open AI chat panel')}">
-      🤖 ${t('Send to AI')}
     </button>
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
@@ -1688,17 +1675,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
-      .code-ai-btn {
-        background: rgba(139, 92, 246, 0.08);
-        color: var(--color-fg-default);
-        border-color: rgba(139, 92, 246, 0.3);
-      }
-
-      .code-ai-btn:hover {
-        border-color: rgba(139, 92, 246, 0.7);
-        background: rgba(139, 92, 246, 0.15);
-      }
-
       /* CodeMirror 容器 */
       .code-cm-container {
         width: 100%;
@@ -2122,19 +2098,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      /** Copy code and open AI chat panel */
-      function sendCodeToChat(blockId) {
-        var contextText = buildCodeContext(blockId);
-        if (contextText) {
-          vscode.postMessage({ type: 'openChatAndPaste', text: contextText });
-        }
-      }
-
-      /** Copy text and open AI chat panel */
-      function sendToChat(text) {
-        if (!text) return;
-        vscode.postMessage({ type: 'openChatAndPaste', text: text });
-      }
 
       /** Show a toast notification with paste hint */
       function showCopyToast(message) {
