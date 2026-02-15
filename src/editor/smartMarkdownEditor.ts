@@ -844,8 +844,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="${t('Reset to original code')}">
       ↩️ ${t('Reset')}
     </button>
-    <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context (Ctrl+V to paste)')}">
-      📋 ${t('Copy as Context')}
+    <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy @file reference to clipboard (Ctrl+V to paste into chat)')}">
+      📋 ${t('Copy @file')}
     </button>
     ${this.isCursorIDE ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to Cursor AI chat as @file reference')}">
       🤖 ${t('Add to Chat')}
@@ -1976,6 +1976,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     for (const block of linkedBlocks) {
       const blockId = this.generateBlockId(block);
       const normData = this.codeNormCache.get(blockId);
+      // Compute workspace-relative path for @file references
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+      const wsRelPath = block.absoluteFilePath && workspaceRoot
+        ? path.relative(workspaceRoot, block.absoluteFilePath).replace(/\\/g, '/')
+        : block.file || '';
+
       blockDataMap[blockId] = {
         file: block.file,
         key: block.key,
@@ -1987,6 +1993,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         baseIndent: normData?.baseIndent || '',
         originalCode: normData?.normalized || '',
         absoluteFilePath: block.absoluteFilePath || '',
+        workspaceRelativePath: wsRelPath,
         startLine: block.luaNode?.loc.start.line || 0,
         endLine: block.luaNode?.loc.end.line || 0,
       };
@@ -2216,25 +2223,26 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         vscode.postMessage({ type: 'copyToClipboard', text: text });
       }
 
-      /** Build code block context text */
-      function buildCodeContext(blockId) {
-        const data = blockData[blockId];
+      /** Build @file reference string (workspace-relative path with optional line range) */
+      function buildFileReference(blockId) {
+        var data = blockData[blockId];
         if (!data) return '';
-        var code = '';
-        if (typeof CodeEditor !== 'undefined') {
-          code = CodeEditor.getValue(blockId);
+        var filePath = data.workspaceRelativePath || data.file || '';
+        var startLine = data.startLine || 0;
+        var endLine = data.endLine || 0;
+        if (startLine && endLine && endLine !== startLine) {
+          return '@' + filePath + ':' + startLine + '-' + endLine;
+        } else if (startLine) {
+          return '@' + filePath + ':' + startLine;
         }
-        if (!code) code = data.originalCode || '';
-        var lang = data.lang || 'lua';
-        return '// File: ' + data.file + ', Key: ' + data.key + '\\n' +
-          '\`\`\`' + lang + '\\n' + code + '\\n\`\`\`';
+        return '@' + filePath;
       }
 
-      /** Copy code block content as AI-friendly context */
+      /** Copy file reference as @file format (backup for Add to Chat) */
       function copyCodeAsContext(blockId) {
-        var contextText = buildCodeContext(blockId);
-        if (contextText) {
-          vscode.postMessage({ type: 'copyToClipboard', text: contextText });
+        var ref = buildFileReference(blockId);
+        if (ref) {
+          vscode.postMessage({ type: 'copyToClipboard', text: ref });
         }
       }
 
