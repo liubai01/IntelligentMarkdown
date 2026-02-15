@@ -357,6 +357,11 @@ npm run watch
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+### For Developers
+
+- **[Release Process](docs/QUICK_RELEASE.md)** - How to publish new versions
+- **[Documentation](docs/)** - Complete developer documentation
+
 ---
 
 ## 📄 License
