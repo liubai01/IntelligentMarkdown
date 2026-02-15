@@ -125,7 +125,7 @@ export class ProbeScanner {
     while ((match = PROBE_LINK_REGEX.exec(markdownText)) !== null) {
       const fullMatch = match[0];
       const displayText = match[1];
-      const fullUrl = match[2];   // probe://path#name
+      const _fullUrl = match[2];   // probe://path#name (kept for reference)
       const filePath = match[3];
       const probeName = match[4];
 

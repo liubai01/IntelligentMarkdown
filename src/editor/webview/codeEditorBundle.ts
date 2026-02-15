@@ -5,11 +5,12 @@
 
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine, rectangularSelection, crosshairCursor } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
-import { defaultHighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching, foldGutter, foldKeymap, HighlightStyle, StreamLanguage } from '@codemirror/language';
+import { syntaxHighlighting, indentOnInput, bracketMatching, foldGutter, foldKeymap, HighlightStyle, StreamLanguage } from '@codemirror/language';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
+// oneDark theme imported for potential future use
+// import { oneDark, oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 
 // Language imports - native CM6 packages
 import { javascript } from '@codemirror/lang-javascript';
@@ -383,7 +384,7 @@ function createEditor(
  */
 function getValue(blockId: string): string {
   const instance = editors.get(blockId);
-  if (!instance) return '';
+  if (!instance) { return ''; }
   return instance.view.state.doc.toString();
 }
 
@@ -392,7 +393,7 @@ function getValue(blockId: string): string {
  */
 function setValue(blockId: string, code: string): void {
   const instance = editors.get(blockId);
-  if (!instance) return;
+  if (!instance) { return; }
   instance.view.dispatch({
     changes: {
       from: 0,

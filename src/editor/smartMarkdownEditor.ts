@@ -563,7 +563,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     documentPath: string
   ): Record<string, string> {
     const resolved: Record<string, string> = {};
-    if (!variables) return resolved;
+    if (!variables) { return resolved; }
 
     const mdDir = path.dirname(documentPath);
     for (const [key, varDef] of Object.entries(variables)) {
@@ -977,8 +977,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           try {
             await new Promise<string>((resolve, reject) => {
               exec(cmd, { cwd, timeout: 60000, encoding: 'utf-8' }, (err: any, stdout: string, stderr: string) => {
-                if (stdout) outputChannel.appendLine(stdout.trimEnd());
-                if (stderr) outputChannel.appendLine(stderr.trimEnd());
+                if (stdout) { outputChannel.appendLine(stdout.trimEnd()); }
+                if (stderr) { outputChannel.appendLine(stderr.trimEnd()); }
                 if (err) {
                   reject(new Error(`Command failed (exit ${err.code}): ${cmd}\n${stderr || err.message}`));
                 } else {
@@ -2779,7 +2779,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   /**
    * Get script
    */
-  private getScript(linkedBlocks: LinkedConfigBlock[], wizardBlocks: ParsedWizardBlock[] = []): string {
+  private getScript(linkedBlocks: LinkedConfigBlock[], _wizardBlocks: ParsedWizardBlock[] = []): string {
     // Create block data mapping (including code block normalization info)
     const blockDataMap: Record<string, any> = {};
     for (const block of linkedBlocks) {
@@ -3370,7 +3370,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             + '<div class="wizard-result-title">Completed Successfully</div>'
             + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
             + '<div class="wizard-result-actions">'
-            + '<button class="wizard-btn wizard-btn-secondary" onclick="wizardRestart(\'' + wizardId + '\')">🔄 Restart Wizard</button>'
+            + '<button class="wizard-btn wizard-btn-secondary" onclick="wizardRestart(' + JSON.stringify(wizardId) + ')">🔄 Restart Wizard</button>'
             + '</div>';
         } else {
           resultEl.className = 'wizard-result wizard-result-error';
@@ -3378,7 +3378,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             + '<div class="wizard-result-title">Execution Failed</div>'
             + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
             + '<div class="wizard-result-actions">'
-            + '<button class="wizard-btn wizard-btn-primary" onclick="wizardRestart(\'' + wizardId + '\')">🔄 Restart Wizard</button>'
+            + '<button class="wizard-btn wizard-btn-primary" onclick="wizardRestart(' + JSON.stringify(wizardId) + ')">🔄 Restart Wizard</button>'
             + '</div>';
         }
         resultEl.style.display = 'block';
