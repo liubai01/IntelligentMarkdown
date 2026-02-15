@@ -118,4 +118,41 @@ const mermaidConfig = {
   }
 };
 
-module.exports = [extensionConfig, webviewConfig, mermaidConfig];
+/** @type {import('webpack').Configuration} */
+const tabulatorConfig = {
+  target: 'web',
+  mode: 'none',
+  entry: './src/editor/webview/tabulatorBundle.ts',
+  output: {
+    path: path.resolve(__dirname, 'media'),
+    filename: 'tabulator.js',
+    library: {
+      type: 'window'
+    }
+  },
+  resolve: {
+    extensions: ['.ts', '.js']
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig.webview.json'
+            }
+          }
+        ]
+      }
+    ]
+  },
+  devtool: 'nosources-source-map',
+  performance: {
+    hints: false
+  }
+};
+
+module.exports = [extensionConfig, webviewConfig, mermaidConfig, tabulatorConfig];

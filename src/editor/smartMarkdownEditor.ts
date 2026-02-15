@@ -385,6 +385,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mermaid.js')
     );
 
+    // Tabulator bundle URI
+    const tabulatorScriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'tabulator.js')
+    );
+    const tabulatorCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'tabulator.css')
+    );
+
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -392,6 +400,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
   <title>${vscode.l10n.t('Config Preview')}</title>
+  <link rel="stylesheet" href="${tabulatorCssUri}">
   <style>
     ${this.getStyles()}
   </style>
@@ -407,6 +416,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   </div>
   <script src="${codeEditorScriptUri}"></script>
   <script src="${mermaidScriptUri}"></script>
+  <script src="${tabulatorScriptUri}"></script>
   <script>
     ${this.getScript(linkedBlocks)}
   </script>
@@ -731,7 +741,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * Render table input
+   * Render table input (Tabulator-powered)
    */
   private renderTableInput(block: LinkedConfigBlock, blockId: string): string {
     const t = vscode.l10n.t;
@@ -746,58 +756,22 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       return `<div class="table-empty">${t('No data')}</div>`;
     }
 
-    // Generate table header
-    const headerCells = block.columns.map(col => 
-      `<th style="${col.width ? `width: ${col.width};` : ''}">${col.label}</th>`
-    ).join('');
-
-    // Generate table rows
-    const rows = tableData.map((row, rowIndex) => {
-      const cells = block.columns!.map(col => {
-        const cellId = `${blockId}-${rowIndex}-${col.key}`;
-        const cellValue = row.data[col.key] ?? '';
-        let cellInput = '';
-
-        switch (col.type) {
-          case 'number': {
-            const min = col.min !== undefined ? `min="${col.min}"` : '';
-            const max = col.max !== undefined ? `max="${col.max}"` : '';
-            const step = col.step !== undefined ? `step="${col.step}"` : 'step="1"';
-            cellInput = `<input type="number" class="table-cell-input" id="${cellId}" value="${cellValue}" ${min} ${max} ${step} ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
-            break;
-          }
-          case 'string':
-            cellInput = `<input type="text" class="table-cell-input" id="${cellId}" value="${this.escapeHtml(String(cellValue))}" ${col.readonly ? 'readonly' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
-            break;
-          case 'boolean':
-            cellInput = `<input type="checkbox" class="table-cell-checkbox" id="${cellId}" ${cellValue ? 'checked' : ''} ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">`;
-            break;
-          case 'select': {
-            const opts = (col.options || []).map(opt => {
-              const selected = opt.value === cellValue || String(opt.value) === String(cellValue) ? 'selected' : '';
-              return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
-            }).join('');
-            cellInput = `<select class="table-cell-select" id="${cellId}" ${col.readonly ? 'disabled' : ''} onchange="updateTableCell('${blockId}', ${rowIndex}, '${col.key}')">${opts}</select>`;
-            break;
-          }
-        }
-
-        return `<td>${cellInput}</td>`;
-      }).join('');
-
-      return `<tr>${cells}</tr>`;
-    }).join('');
+    // Serialize column definitions and row data as JSON for the Tabulator bundle
+    const columnsJson = this.escapeHtml(JSON.stringify(block.columns));
+    const rowData = tableData.map(row => row.data);
+    const dataJson = this.escapeHtml(JSON.stringify(rowData));
 
     return `
 <div class="table-wrapper">
-  <table class="config-table">
-    <thead>
-      <tr>${headerCells}</tr>
-    </thead>
-    <tbody>
-      ${rows}
-    </tbody>
-  </table>
+  <div class="table-toolbar">
+    <span class="table-info">${t('{0} rows', tableData.length)}</span>
+    <button class="table-filter-btn" onclick="TabulatorGrid.clearFilters('${blockId}-tabulator')" title="${t('Clear all filters')}">🧹 ${t('Clear Filters')}</button>
+  </div>
+  <div class="tabulator-container" id="${blockId}-tabulator"
+    data-block-id="${blockId}"
+    data-columns="${columnsJson}"
+    data-rows="${dataJson}">
+  </div>
 </div>`;
   }
 
@@ -1524,99 +1498,38 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
-      /* ========== 表格样式 ========== */
+      /* ========== 表格样式 (Tabulator) ========== */
       .table-wrapper {
         width: 100%;
         overflow-x: auto;
         margin: 8px 0;
       }
 
-      .config-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-        background: var(--color-canvas-default);
-        border: 1px solid var(--color-border-muted);
-        border-radius: 6px;
-        overflow: hidden;
+      .table-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 0;
+        margin-bottom: 4px;
       }
 
-      .config-table thead {
+      .table-info {
+        font-size: 12px;
+        color: var(--color-fg-muted);
+      }
+
+      .table-filter-btn {
+        padding: 3px 10px;
+        font-size: 12px;
+        border: 1px solid var(--color-border-default);
+        border-radius: 4px;
         background: var(--color-canvas-subtle);
-      }
-
-      .config-table th {
-        padding: 8px 12px;
-        text-align: left;
-        font-weight: 600;
         color: var(--color-fg-default);
-        border-bottom: 2px solid var(--color-border-default);
-      }
-
-      .config-table td {
-        padding: 6px 12px;
-        border-bottom: 1px solid var(--color-border-muted);
-      }
-
-      .config-table tbody tr:last-child td {
-        border-bottom: none;
-      }
-
-      .config-table tbody tr:hover {
-        background: var(--color-canvas-subtle);
-      }
-
-      .table-cell-input {
-        width: 100%;
-        padding: 4px 8px;
-        border: 1px solid var(--input-border);
-        border-radius: 4px;
-        background: var(--input-bg);
-        color: var(--input-fg);
-        font-size: 12px;
-        transition: border-color 0.15s;
-      }
-
-      .table-cell-input:focus {
-        outline: none;
-        border-color: var(--color-accent);
-      }
-
-      .table-cell-input[readonly] {
-        background: rgba(128, 128, 128, 0.1);
-        cursor: not-allowed;
-      }
-
-      .table-cell-checkbox {
-        width: 16px;
-        height: 16px;
         cursor: pointer;
+        transition: background 0.15s;
       }
-
-      .table-cell-checkbox:disabled {
-        cursor: not-allowed;
-        opacity: 0.5;
-      }
-
-      .table-cell-select {
-        width: 100%;
-        padding: 4px 8px;
-        border: 1px solid var(--input-border);
-        border-radius: 4px;
-        background: var(--input-bg);
-        color: var(--input-fg);
-        font-size: 12px;
-        cursor: pointer;
-      }
-
-      .table-cell-select:focus {
-        outline: none;
-        border-color: var(--color-accent);
-      }
-
-      .table-cell-select:disabled {
-        cursor: not-allowed;
-        opacity: 0.5;
+      .table-filter-btn:hover {
+        background: var(--color-canvas-default);
       }
 
       .table-empty {
@@ -1624,6 +1537,109 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         text-align: center;
         color: var(--color-fg-muted);
         font-size: 13px;
+      }
+
+      /* Tabulator VS Code theme overrides */
+      .tabulator {
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif) !important;
+        font-size: 13px !important;
+        border: 1px solid var(--color-border-muted) !important;
+        border-radius: 6px !important;
+        background-color: var(--color-canvas-default) !important;
+        overflow: hidden;
+      }
+      .tabulator .tabulator-header {
+        background-color: var(--color-canvas-subtle) !important;
+        border-bottom: 2px solid var(--color-border-default) !important;
+        color: var(--color-fg-default) !important;
+      }
+      .tabulator .tabulator-header .tabulator-col {
+        background-color: transparent !important;
+        border-right: 1px solid var(--color-border-muted) !important;
+      }
+      .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        color: var(--color-fg-default) !important;
+      }
+      .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+        color: var(--color-fg-default) !important;
+        font-weight: 600;
+      }
+      .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+        padding-right: 20px;
+      }
+      .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        background: var(--input-bg) !important;
+        color: var(--input-fg) !important;
+        border: 1px solid var(--input-border) !important;
+        border-radius: 3px !important;
+        padding: 2px 6px !important;
+        font-size: 12px !important;
+      }
+      .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        border-color: var(--color-accent) !important;
+        outline: none !important;
+      }
+      .tabulator .tabulator-header .tabulator-col .tabulator-header-filter select {
+        background: var(--input-bg) !important;
+        color: var(--input-fg) !important;
+        border: 1px solid var(--input-border) !important;
+        border-radius: 3px !important;
+        padding: 2px 6px !important;
+        font-size: 12px !important;
+      }
+      .tabulator .tabulator-tableholder {
+        background-color: var(--color-canvas-default) !important;
+      }
+      .tabulator-row {
+        background-color: var(--color-canvas-default) !important;
+        border-bottom: 1px solid var(--color-border-muted) !important;
+        color: var(--color-fg-default) !important;
+        min-height: 32px !important;
+      }
+      .tabulator-row:hover {
+        background-color: var(--color-canvas-subtle) !important;
+      }
+      .tabulator-row.tabulator-row-even {
+        background-color: var(--color-canvas-default) !important;
+      }
+      .tabulator-row.tabulator-row-even:hover {
+        background-color: var(--color-canvas-subtle) !important;
+      }
+      .tabulator-row .tabulator-cell {
+        border-right: 1px solid var(--color-border-muted) !important;
+        color: var(--color-fg-default) !important;
+        padding: 6px 10px !important;
+      }
+      .tabulator-row .tabulator-cell.tabulator-editing {
+        border: 1px solid var(--color-accent) !important;
+        padding: 0 !important;
+      }
+      .tabulator-row .tabulator-cell.tabulator-editing input,
+      .tabulator-row .tabulator-cell.tabulator-editing select {
+        background: var(--input-bg) !important;
+        color: var(--input-fg) !important;
+        border: none !important;
+        padding: 6px 10px !important;
+        font-size: 13px !important;
+      }
+      .tabulator .tabulator-footer {
+        background-color: var(--color-canvas-subtle) !important;
+        border-top: 1px solid var(--color-border-default) !important;
+        color: var(--color-fg-muted) !important;
+      }
+      .tabulator .tabulator-placeholder {
+        color: var(--color-fg-muted) !important;
+        background: var(--color-canvas-default) !important;
+      }
+      .tabulator .tabulator-col-resize-handle {
+        width: 6px;
+      }
+      /* Sort arrows */
+      .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="ascending"] .tabulator-col-sorter .tabulator-arrow {
+        border-bottom-color: var(--color-accent) !important;
+      }
+      .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="descending"] .tabulator-col-sorter .tabulator-arrow {
+        border-top-color: var(--color-accent) !important;
       }
 
       /* ========== 代码编辑控件 ========== */
@@ -1961,25 +1977,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      function updateTableCell(blockId, rowIndex, colKey) {
-        const cellId = blockId + '-' + rowIndex + '-' + colKey;
-        const input = document.getElementById(cellId);
+      function updateTableCell(blockId, rowIndex, colKey, value) {
         const data = blockData[blockId];
-        if (!input || !data) return;
-
-        let value;
-        if (input.type === 'checkbox') {
-          value = input.checked;
-        } else if (input.type === 'number') {
-          value = parseFloat(input.value);
-          if (isNaN(value)) return;
-        } else if (input.tagName === 'SELECT') {
-          value = input.value;
-          const numValue = parseFloat(value);
-          if (!isNaN(numValue)) value = numValue;
-        } else {
-          value = input.value;
-        }
+        if (!data) return;
 
         vscode.postMessage({
           type: 'updateTableCell',
@@ -1990,12 +1990,41 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           value: value
         });
 
-        const block = input.closest('.config-block');
-        if (block) {
-          block.classList.remove('updated');
-          void block.offsetWidth;
-          block.classList.add('updated');
+        // Flash the config block
+        const container = document.getElementById(blockId + '-tabulator');
+        if (container) {
+          const block = container.closest('.config-block');
+          if (block) {
+            block.classList.remove('updated');
+            void block.offsetWidth;
+            block.classList.add('updated');
+          }
         }
+      }
+
+      /** Initialize all Tabulator table instances */
+      function initTabulatorTables() {
+        if (typeof TabulatorGrid === 'undefined') return;
+
+        document.querySelectorAll('.tabulator-container').forEach(function(el) {
+          var containerId = el.id;
+          var rawBlockId = el.getAttribute('data-block-id');
+          var columnsJson = el.getAttribute('data-columns');
+          var rowsJson = el.getAttribute('data-rows');
+          if (!columnsJson || !rowsJson || !rawBlockId) return;
+
+          try {
+            var columns = JSON.parse(columnsJson);
+            var rows = JSON.parse(rowsJson);
+            TabulatorGrid.create(containerId, columns, rows, {
+              onCellEdited: function(rowIndex, colKey, value) {
+                updateTableCell(rawBlockId, rowIndex, colKey, value);
+              }
+            });
+          } catch (e) {
+            console.error('Tabulator init error for ' + containerId, e);
+          }
+        });
       }
 
       function adjustNumber(blockId, delta) {
@@ -2110,6 +2139,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       if (typeof MermaidRenderer !== 'undefined') {
         MermaidRenderer.renderAll();
       }
+
+      // 初始化 Tabulator 表格
+      initTabulatorTables();
 
       /* ========== Copy & Send to AI Context ========== */
 

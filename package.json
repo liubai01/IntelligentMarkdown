@@ -129,13 +129,15 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "webpack --mode production",
-    "watch": "webpack --mode development --watch",
+    "copy-assets": "node -e \"const fs=require('fs');const p=require('path');fs.mkdirSync('media',{recursive:true});fs.copyFileSync(p.join('node_modules','tabulator-tables','dist','css','tabulator_simple.min.css'),p.join('media','tabulator.css'));\"",
+    "compile": "npm run copy-assets && webpack --mode production",
+    "watch": "npm run copy-assets && webpack --mode development --watch",
     "lint": "eslint src --ext ts",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/tabulator-tables": "^6.3.1",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
@@ -164,6 +166,7 @@
     "codemirror": "^6.0.2",
     "luaparse": "^0.3.1",
     "mermaid": "^11.12.2",
+    "tabulator-tables": "^6.3.1",
     "yaml": "^2.3.4"
   }
 }
