@@ -1066,6 +1066,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     const rowData = tableData.map(row => row.data);
     const dataJson = this.escapeHtml(JSON.stringify(rowData));
 
+    // Build row location info for "goto source" feature
+    const rowLocations = tableData.map(row => ({
+      line: row.rowLoc?.start.line || 0,
+      file: block.absoluteFilePath || ''
+    }));
+    const rowLocationsJson = this.escapeHtml(JSON.stringify(rowLocations));
+
     return `
 <div class="table-wrapper">
   <div class="table-toolbar">
@@ -1075,7 +1082,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   <div class="tabulator-container" id="${blockId}-tabulator"
     data-block-id="${blockId}"
     data-columns="${columnsJson}"
-    data-rows="${dataJson}">
+    data-rows="${dataJson}"
+    data-row-locations="${rowLocationsJson}">
   </div>
 </div>`;
   }
@@ -1952,6 +1960,26 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         border-top-color: var(--color-accent) !important;
       }
 
+      /* Goto source button in table rows */
+      .tabulator-goto-col {
+        padding: 2px 4px !important;
+      }
+      .tabulator-goto-btn {
+        cursor: pointer;
+        font-size: 14px;
+        opacity: 0.5;
+        transition: opacity 0.15s;
+        display: inline-block;
+        line-height: 1;
+      }
+      .tabulator-row:hover .tabulator-goto-btn {
+        opacity: 1;
+      }
+      .tabulator-goto-btn:hover {
+        opacity: 1;
+        transform: scale(1.2);
+      }
+
       /* ========== 代码编辑控件 ========== */
       .code-wrapper {
         width: 100%;
@@ -2589,14 +2617,26 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           var rawBlockId = el.getAttribute('data-block-id');
           var columnsJson = el.getAttribute('data-columns');
           var rowsJson = el.getAttribute('data-rows');
+          var rowLocsJson = el.getAttribute('data-row-locations');
           if (!columnsJson || !rowsJson || !rawBlockId) return;
 
           try {
             var columns = JSON.parse(columnsJson);
             var rows = JSON.parse(rowsJson);
+            var rowLocations = rowLocsJson ? JSON.parse(rowLocsJson) : [];
             TabulatorGrid.create(containerId, columns, rows, {
               onCellEdited: function(rowIndex, colKey, value) {
                 updateTableCell(rawBlockId, rowIndex, colKey, value);
+              },
+              onGotoSource: function(rowIndex) {
+                var loc = rowLocations[rowIndex];
+                if (loc && loc.file && loc.line) {
+                  vscode.postMessage({
+                    type: 'gotoSource',
+                    file: loc.file,
+                    line: loc.line
+                  });
+                }
               }
             });
           } catch (e) {

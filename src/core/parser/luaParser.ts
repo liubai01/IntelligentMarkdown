@@ -261,12 +261,20 @@ export class LuaParser {
    * Extract detailed table array structure (for table control)
    * Returns field info with range for each array element
    */
-  extractTableArray(node: any): Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }> | null {
+  extractTableArray(node: any): Array<{
+    data: Record<string, any>;
+    ranges: Record<string, [number, number]>;
+    rowLoc?: { start: { line: number; column: number }; end: { line: number; column: number } };
+  }> | null {
     if (!node || node.type !== 'TableConstructorExpression') {
       return null;
     }
 
-    const result: Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }> = [];
+    const result: Array<{
+      data: Record<string, any>;
+      ranges: Record<string, [number, number]>;
+      rowLoc?: { start: { line: number; column: number }; end: { line: number; column: number } };
+    }> = [];
     
     for (const field of node.fields) {
       if (field.type === 'TableValue' && field.value.type === 'TableConstructorExpression') {
@@ -293,7 +301,13 @@ export class LuaParser {
           }
         }
 
-        result.push({ data: rowData, ranges: rowRanges });
+        // Capture row-level location from the inner table constructor
+        const rowLoc = field.value.loc ? {
+          start: { line: field.value.loc.start.line, column: field.value.loc.start.column },
+          end: { line: field.value.loc.end.line, column: field.value.loc.end.column }
+        } : undefined;
+
+        result.push({ data: rowData, ranges: rowRanges, rowLoc });
       }
     }
 

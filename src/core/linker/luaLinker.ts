@@ -22,7 +22,11 @@ export interface LinkedConfigBlock extends ParsedConfigBlock {
       end: { line: number; column: number };
     };
     /** Table type detailed data (includes range for each field) */
-    tableData?: Array<{ data: Record<string, any>; ranges: Record<string, [number, number]> }>;
+    tableData?: Array<{
+      data: Record<string, any>;
+      ranges: Record<string, [number, number]>;
+      rowLoc?: { start: { line: number; column: number }; end: { line: number; column: number } };
+    }>;
   };
   /** Link status */
   linkStatus: 'ok' | 'file-not-found' | 'key-not-found' | 'parse-error';

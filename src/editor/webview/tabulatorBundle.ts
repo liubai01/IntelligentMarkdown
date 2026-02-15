@@ -26,6 +26,7 @@ interface ColumnDef {
 /** Callbacks for table events */
 interface TableCallbacks {
   onCellEdited: (rowIndex: number, colKey: string, value: any) => void;
+  onGotoSource?: (rowIndex: number) => void;
 }
 
 // ============ State ============
@@ -72,6 +73,31 @@ function create(
     resizable: false,
     headerFilter: undefined,
   });
+
+  // Goto source column (action button)
+  if (callbacks.onGotoSource) {
+    const gotoCallback = callbacks.onGotoSource;
+    tabulatorColumns.push({
+      title: '',
+      field: '__goto',
+      width: 42,
+      headerSort: false,
+      hozAlign: 'center',
+      resizable: false,
+      headerFilter: undefined,
+      cssClass: 'tabulator-goto-col',
+      formatter: () => {
+        return '<span class="tabulator-goto-btn" title="Go to source">📍</span>';
+      },
+      cellClick: (_e: Event, cell: any) => {
+        const rowData = cell.getRow().getData();
+        const rowIndex = rowData.__rowIndex;
+        if (rowIndex !== undefined) {
+          gotoCallback(rowIndex);
+        }
+      },
+    });
+  }
 
   for (const col of columns) {
     const tCol: any = {
