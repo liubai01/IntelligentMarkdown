@@ -4,3 +4,6 @@ dist/
 .vscode-test/
 *.log
 .DS_Store
+
+# Personal Access Token (never commit!)
+.vscode-pat
