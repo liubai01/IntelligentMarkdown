@@ -541,7 +541,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       let replacement: string;
       if (target) {
         const escapedPath = target.filePath.replace(/\\/g, '\\\\');
-        replacement = `<a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a>`;
+        const relPath = path.relative(mdDir, target.filePath).replace(/\\/g, '/');
+        const dragText = `${relPath}:${target.line}`;
+        replacement = `<a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" draggable="true" data-drag-text="${this.escapeHtml(dragText)}" data-drag-context="${this.escapeHtml(`File: ${relPath}, Line: ${target.line}, Target: ${probeLink.probeName}`)}" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}&#10;${vscode.l10n.t('Drag to Cursor chat as context')}">📍 ${this.escapeHtml(probeLink.displayText)}</a>`;
       } else {
         replacement = `<span class="probe-link-broken" title="${vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath)}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
       }
@@ -594,9 +596,15 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       inputHtml = `<span class="error-message">${block.linkError}</span>`;
     }
 
+    // Build drag context for AI assistant
+    const dragContext = block.linkStatus === 'ok'
+      ? `[Config] ${block.key} = ${block.type === 'code' ? '(function)' : block.currentValue ?? ''} | File: ${block.file}, Line: ${block.luaNode?.loc.start.line || '?'}`
+      : `[Config] ${block.key} | ${block.linkError || 'unlinked'}`;
+
     return `
-<div class="config-block ${statusClass}" data-block-id="${blockId}">
+<div class="config-block ${statusClass}" data-block-id="${blockId}" draggable="true" data-drag-text="${this.escapeHtml(dragContext)}">
   <div class="config-header">
+    <span class="drag-handle" title="${vscode.l10n.t('Drag to Cursor chat as context')}">⠿</span>
     <span class="status-icon">${statusIcon}</span>
     <span class="config-label">${label}</span>
     <span class="config-key" title="${block.key}">${block.key}</span>
@@ -811,6 +819,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     </button>
     <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="${t('Reset to original code')}">
       ↩️ ${t('Reset')}
+    </button>
+    <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context')}">
+      📋 ${t('Copy')}
     </button>
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
@@ -1207,6 +1218,53 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(128, 128, 128, 0.15);
       }
 
+      /* ========== Drag handle & drag feedback ========== */
+      .drag-handle {
+        cursor: grab;
+        opacity: 0.3;
+        font-size: 12px;
+        line-height: 1;
+        user-select: none;
+        padding: 0 2px;
+        transition: opacity 0.15s;
+        letter-spacing: -1px;
+      }
+
+      .drag-handle:hover {
+        opacity: 0.8;
+      }
+
+      .config-block:active .drag-handle {
+        cursor: grabbing;
+      }
+
+      [draggable="true"] {
+        -webkit-user-drag: element;
+      }
+
+      .config-block.dragging {
+        opacity: 0.5;
+        border-style: dashed;
+        border-color: var(--color-accent);
+      }
+
+      .probe-link[draggable="true"] {
+        position: relative;
+      }
+
+      .probe-link[draggable="true"]::after {
+        content: '⠿';
+        font-size: 9px;
+        opacity: 0;
+        margin-left: 2px;
+        vertical-align: super;
+        transition: opacity 0.15s;
+      }
+
+      .probe-link[draggable="true"]:hover::after {
+        opacity: 0.5;
+      }
+
       .config-input {
         display: flex;
         align-items: center;
@@ -1598,6 +1656,16 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
+      .code-copy-btn {
+        background: var(--color-canvas-subtle);
+        color: var(--color-fg-default);
+      }
+
+      .code-copy-btn:hover {
+        border-color: var(--color-accent);
+        background: rgba(9, 105, 218, 0.08);
+      }
+
       /* CodeMirror 容器 */
       .code-cm-container {
         width: 100%;
@@ -1724,6 +1792,29 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       .config-block.updated {
         animation: flash 0.6s ease-out;
+      }
+
+      /* ========== Copy toast ========== */
+      .copy-toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%) translateY(10px);
+        background: var(--color-fg-default);
+        color: var(--color-canvas-default);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        opacity: 0;
+        transition: opacity 0.3s, transform 0.3s;
+        z-index: 9999;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+
+      .copy-toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
       }
     `;
   }
@@ -1949,6 +2040,73 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       if (typeof MermaidRenderer !== 'undefined') {
         MermaidRenderer.renderAll();
       }
+
+      /* ========== Drag-and-Drop for AI Context ========== */
+
+      /** Copy code block content as AI-friendly context */
+      function copyCodeAsContext(blockId) {
+        const data = blockData[blockId];
+        if (!data) return;
+        var code = '';
+        if (typeof CodeEditor !== 'undefined') {
+          code = CodeEditor.getValue(blockId);
+        }
+        if (!code) code = data.originalCode || '';
+        var lang = data.lang || 'lua';
+        var contextText = '// File: ' + data.file + ', Key: ' + data.key + '\\n' +
+          '\`\`\`' + lang + '\\n' + code + '\\n\`\`\`';
+        navigator.clipboard.writeText(contextText).then(function() {
+          showCopyToast('Code copied as context');
+        }).catch(function() {
+          // Fallback: select and copy
+          var ta = document.createElement('textarea');
+          ta.value = contextText;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showCopyToast('Code copied as context');
+        });
+      }
+
+      /** Show a brief toast notification */
+      function showCopyToast(message) {
+        var toast = document.createElement('div');
+        toast.className = 'copy-toast';
+        toast.textContent = '✅ ' + message;
+        document.body.appendChild(toast);
+        requestAnimationFrame(function() { toast.classList.add('show'); });
+        setTimeout(function() {
+          toast.classList.remove('show');
+          setTimeout(function() { toast.remove(); }, 300);
+        }, 1500);
+      }
+
+      /** Global drag start handler for draggable elements */
+      document.addEventListener('dragstart', function(e) {
+        var target = e.target;
+        if (!target || !target.getAttribute) return;
+
+        var dragText = target.getAttribute('data-drag-text');
+        var dragContext = target.getAttribute('data-drag-context');
+        if (!dragText && !dragContext) return;
+
+        // Set plain text data for Cursor AI chat input
+        e.dataTransfer.setData('text/plain', dragContext || dragText);
+        e.dataTransfer.effectAllowed = 'copy';
+
+        // Visual feedback
+        if (target.classList.contains('config-block')) {
+          target.classList.add('dragging');
+        }
+      });
+
+      document.addEventListener('dragend', function(e) {
+        var target = e.target;
+        if (target && target.classList) {
+          target.classList.remove('dragging');
+        }
+      });
 
       function gotoSource(file, line) {
         vscode.postMessage({
