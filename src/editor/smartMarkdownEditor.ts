@@ -66,6 +66,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           case 'gotoProbe':
             await this.handleGotoSource(message, document.uri);
             break;
+          case 'copyToClipboard':
+            await vscode.env.clipboard.writeText(message.text || '');
+            webviewPanel.webview.postMessage({ type: 'clipboardDone' });
+            break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
             break;
@@ -542,8 +546,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       if (target) {
         const escapedPath = target.filePath.replace(/\\/g, '\\\\');
         const relPath = path.relative(mdDir, target.filePath).replace(/\\/g, '/');
-        const dragText = `${relPath}:${target.line}`;
-        replacement = `<a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" draggable="true" data-drag-text="${this.escapeHtml(dragText)}" data-drag-context="${this.escapeHtml(`File: ${relPath}, Line: ${target.line}, Target: ${probeLink.probeName}`)}" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}&#10;${vscode.l10n.t('Drag to Cursor chat as context')}">📍 ${this.escapeHtml(probeLink.displayText)}</a>`;
+        const copyContext = `${relPath}:${target.line} (${probeLink.probeName})`;
+        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a><button class="probe-copy-btn" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${vscode.l10n.t('Copy reference for AI context')}">📋</button></span>`;
       } else {
         replacement = `<span class="probe-link-broken" title="${vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath)}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
       }
@@ -596,15 +600,15 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       inputHtml = `<span class="error-message">${block.linkError}</span>`;
     }
 
-    // Build drag context for AI assistant
-    const dragContext = block.linkStatus === 'ok'
+    // Build copy context for AI assistant
+    const copyContext = block.linkStatus === 'ok'
       ? `[Config] ${block.key} = ${block.type === 'code' ? '(function)' : block.currentValue ?? ''} | File: ${block.file}, Line: ${block.luaNode?.loc.start.line || '?'}`
       : `[Config] ${block.key} | ${block.linkError || 'unlinked'}`;
 
     return `
-<div class="config-block ${statusClass}" data-block-id="${blockId}" draggable="true" data-drag-text="${this.escapeHtml(dragContext)}">
+<div class="config-block ${statusClass}" data-block-id="${blockId}" data-copy-context="${this.escapeHtml(copyContext)}">
   <div class="config-header">
-    <span class="drag-handle" title="${vscode.l10n.t('Drag to Cursor chat as context')}">⠿</span>
+    <button class="copy-handle" onclick="copyContext(this.closest('.config-block').getAttribute('data-copy-context'))" title="${vscode.l10n.t('Copy as AI context')}">📋</button>
     <span class="status-icon">${statusIcon}</span>
     <span class="config-label">${label}</span>
     <span class="config-key" title="${block.key}">${block.key}</span>
@@ -1218,51 +1222,48 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(128, 128, 128, 0.15);
       }
 
-      /* ========== Drag handle & drag feedback ========== */
-      .drag-handle {
-        cursor: grab;
-        opacity: 0.3;
-        font-size: 12px;
+      /* ========== Copy-as-context buttons ========== */
+      .copy-handle {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 1px 3px;
+        border-radius: 3px;
+        opacity: 0.25;
+        font-size: 11px;
         line-height: 1;
-        user-select: none;
+        transition: opacity 0.15s, background 0.15s;
+      }
+
+      .copy-handle:hover {
+        opacity: 0.9;
+        background: rgba(128, 128, 128, 0.15);
+      }
+
+      .probe-link-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .probe-copy-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 10px;
         padding: 0 2px;
-        transition: opacity 0.15s;
-        letter-spacing: -1px;
-      }
-
-      .drag-handle:hover {
-        opacity: 0.8;
-      }
-
-      .config-block:active .drag-handle {
-        cursor: grabbing;
-      }
-
-      [draggable="true"] {
-        -webkit-user-drag: element;
-      }
-
-      .config-block.dragging {
-        opacity: 0.5;
-        border-style: dashed;
-        border-color: var(--color-accent);
-      }
-
-      .probe-link[draggable="true"] {
-        position: relative;
-      }
-
-      .probe-link[draggable="true"]::after {
-        content: '⠿';
-        font-size: 9px;
         opacity: 0;
-        margin-left: 2px;
-        vertical-align: super;
         transition: opacity 0.15s;
+        vertical-align: middle;
+        line-height: 1;
       }
 
-      .probe-link[draggable="true"]:hover::after {
+      .probe-link-group:hover .probe-copy-btn {
         opacity: 0.5;
+      }
+
+      .probe-copy-btn:hover {
+        opacity: 1 !important;
       }
 
       .config-input {
@@ -2041,7 +2042,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         MermaidRenderer.renderAll();
       }
 
-      /* ========== Drag-and-Drop for AI Context ========== */
+      /* ========== Copy-as-Context for AI ========== */
+
+      /** Copy text to clipboard via extension (reliable in webview) */
+      function copyContext(text) {
+        if (!text) return;
+        vscode.postMessage({ type: 'copyToClipboard', text: text });
+      }
 
       /** Copy code block content as AI-friendly context */
       function copyCodeAsContext(blockId) {
@@ -2055,18 +2062,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         var lang = data.lang || 'lua';
         var contextText = '// File: ' + data.file + ', Key: ' + data.key + '\\n' +
           '\`\`\`' + lang + '\\n' + code + '\\n\`\`\`';
-        navigator.clipboard.writeText(contextText).then(function() {
-          showCopyToast('Code copied as context');
-        }).catch(function() {
-          // Fallback: select and copy
-          var ta = document.createElement('textarea');
-          ta.value = contextText;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          showCopyToast('Code copied as context');
-        });
+        vscode.postMessage({ type: 'copyToClipboard', text: contextText });
       }
 
       /** Show a brief toast notification */
@@ -2082,29 +2078,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }, 1500);
       }
 
-      /** Global drag start handler for draggable elements */
-      document.addEventListener('dragstart', function(e) {
-        var target = e.target;
-        if (!target || !target.getAttribute) return;
-
-        var dragText = target.getAttribute('data-drag-text');
-        var dragContext = target.getAttribute('data-drag-context');
-        if (!dragText && !dragContext) return;
-
-        // Set plain text data for Cursor AI chat input
-        e.dataTransfer.setData('text/plain', dragContext || dragText);
-        e.dataTransfer.effectAllowed = 'copy';
-
-        // Visual feedback
-        if (target.classList.contains('config-block')) {
-          target.classList.add('dragging');
-        }
-      });
-
-      document.addEventListener('dragend', function(e) {
-        var target = e.target;
-        if (target && target.classList) {
-          target.classList.remove('dragging');
+      /** Listen for clipboard done confirmation from extension */
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (msg && msg.type === 'clipboardDone') {
+          showCopyToast('Copied to clipboard');
         }
       });
 
