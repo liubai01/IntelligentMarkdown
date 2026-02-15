@@ -168,8 +168,6 @@ function create(
     data: indexedData,
     columns: tabulatorColumns,
     layout: 'fitColumns',
-    height: 'auto',
-    maxHeight: '400px',
     placeholder: 'No Data',
     movableColumns: true,
     columnHeaderSortMulti: true,

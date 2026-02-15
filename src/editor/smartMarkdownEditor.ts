@@ -1589,6 +1589,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
       .tabulator .tabulator-tableholder {
         background-color: var(--color-canvas-default) !important;
+        max-height: 400px;
+        overflow: auto !important;
       }
       .tabulator-row {
         background-color: var(--color-canvas-default) !important;
