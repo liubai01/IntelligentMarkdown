@@ -80,17 +80,22 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Register command: goto probe location
+  // Register command: goto probe location (smart: reuse open tabs)
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'intelligentMarkdown.gotoProbe',
       async (filePath: string, line: number) => {
         try {
           const uri = vscode.Uri.file(filePath);
-          const document = await vscode.workspace.openTextDocument(uri);
-          const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
-
           const position = new vscode.Position(Math.max(0, line - 1), 0);
+          const targetColumn = findOpenEditorColumn(uri);
+
+          const document = await vscode.workspace.openTextDocument(uri);
+          const editor = await vscode.window.showTextDocument(document, {
+            viewColumn: targetColumn ?? vscode.ViewColumn.One,
+            preserveFocus: false
+          });
+
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(
             new vscode.Range(position, position),
@@ -207,6 +212,37 @@ function matchGlobPattern(filePath: string, pattern: string): boolean {
 
   // Simple match
   return matchSimplePattern(normalizedPath, normalizedPattern);
+}
+
+/**
+ * Find if a file is already open in an editor tab and return its ViewColumn.
+ * Checks visible editors first, then scans recent tabs across all groups.
+ */
+function findOpenEditorColumn(uri: vscode.Uri): vscode.ViewColumn | undefined {
+  // 1. Check visible editors (fastest path)
+  const visibleEditor = vscode.window.visibleTextEditors.find(
+    editor => editor.document.uri.fsPath === uri.fsPath
+  );
+  if (visibleEditor?.viewColumn) {
+    return visibleEditor.viewColumn;
+  }
+
+  // 2. Scan tab groups (check most recent tabs to avoid performance issues)
+  const MAX_TABS_PER_GROUP = 15;
+  for (const group of vscode.window.tabGroups.all) {
+    const tabs = group.tabs;
+    const startIdx = Math.max(0, tabs.length - MAX_TABS_PER_GROUP);
+    for (let i = tabs.length - 1; i >= startIdx; i--) {
+      const tab = tabs[i];
+      if (tab.input instanceof vscode.TabInputText) {
+        if (tab.input.uri.fsPath === uri.fsPath) {
+          return group.viewColumn;
+        }
+      }
+    }
+  }
+
+  return undefined;
 }
 
 /**

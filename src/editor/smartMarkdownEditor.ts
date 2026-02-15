@@ -228,20 +228,57 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Jump to source
+   * Jump to source (smart: reuse already-open editor tabs)
    */
   private async handleGotoSource(message: { file: string; line: number }): Promise<void> {
     try {
       const uri = vscode.Uri.file(message.file);
-      const document = await vscode.workspace.openTextDocument(uri);
-      const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
+      const position = new vscode.Position(Math.max(0, message.line - 1), 0);
+      const targetColumn = this.findOpenEditorColumn(uri);
 
-      const position = new vscode.Position(message.line - 1, 0);
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document, {
+        viewColumn: targetColumn ?? vscode.ViewColumn.Beside,
+        preserveFocus: false
+      });
+
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
     } catch (error) {
       vscode.window.showErrorMessage(vscode.l10n.t('Unable to open file'));
     }
+  }
+
+  /**
+   * Find if a file is already open in an editor tab and return its ViewColumn.
+   * Checks visible editors first, then scans recent tabs across all groups.
+   * Returns undefined if not found.
+   */
+  private findOpenEditorColumn(uri: vscode.Uri): vscode.ViewColumn | undefined {
+    // 1. Check visible editors (fastest path)
+    const visibleEditor = vscode.window.visibleTextEditors.find(
+      editor => editor.document.uri.fsPath === uri.fsPath
+    );
+    if (visibleEditor?.viewColumn) {
+      return visibleEditor.viewColumn;
+    }
+
+    // 2. Scan tab groups (check most recent tabs to avoid performance issues)
+    const MAX_TABS_PER_GROUP = 15;
+    for (const group of vscode.window.tabGroups.all) {
+      const tabs = group.tabs;
+      const startIdx = Math.max(0, tabs.length - MAX_TABS_PER_GROUP);
+      for (let i = tabs.length - 1; i >= startIdx; i--) {
+        const tab = tabs[i];
+        if (tab.input instanceof vscode.TabInputText) {
+          if (tab.input.uri.fsPath === uri.fsPath) {
+            return group.viewColumn;
+          }
+        }
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -917,6 +954,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         --color-border-default: var(--vscode-panel-border, rgba(128,128,128,0.2));
         --color-border-muted: var(--vscode-editorWidget-border, rgba(128,128,128,0.15));
         --color-accent: var(--vscode-focusBorder, #0969da);
+        --color-link: var(--vscode-textLink-foreground, #3794ff);
+        --color-link-active: var(--vscode-textLink-activeForeground, #3794ff);
         --color-success: #1a7f37;
         --color-danger: #cf222e;
         --input-bg: var(--vscode-input-background);
@@ -1534,17 +1573,18 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       /* ========== Probe 链接样式 ========== */
       .probe-link {
-        color: var(--color-accent);
+        color: var(--color-link);
         text-decoration: none;
         cursor: pointer;
-        border-bottom: 1px dashed var(--color-accent);
+        border-bottom: 1px dashed var(--color-link);
         padding-bottom: 1px;
-        transition: opacity 0.15s;
+        transition: color 0.15s, border-color 0.15s;
       }
 
       .probe-link:hover {
-        opacity: 0.8;
+        color: var(--color-link-active);
         border-bottom-style: solid;
+        border-bottom-color: var(--color-link-active);
       }
 
       .probe-link-broken {

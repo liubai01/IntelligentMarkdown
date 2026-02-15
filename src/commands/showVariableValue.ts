@@ -93,7 +93,36 @@ export async function showVariableValueCommand(): Promise<void> {
 }
 
 /**
- * Jump to Lua source
+ * Find if a file is already open in an editor tab and return its ViewColumn.
+ * Checks visible editors first, then scans recent tabs across all groups.
+ */
+function findOpenEditorColumn(uri: vscode.Uri): vscode.ViewColumn | undefined {
+  const visibleEditor = vscode.window.visibleTextEditors.find(
+    e => e.document.uri.fsPath === uri.fsPath
+  );
+  if (visibleEditor?.viewColumn) {
+    return visibleEditor.viewColumn;
+  }
+
+  const MAX_TABS_PER_GROUP = 15;
+  for (const group of vscode.window.tabGroups.all) {
+    const tabs = group.tabs;
+    const startIdx = Math.max(0, tabs.length - MAX_TABS_PER_GROUP);
+    for (let i = tabs.length - 1; i >= startIdx; i--) {
+      const tab = tabs[i];
+      if (tab.input instanceof vscode.TabInputText) {
+        if (tab.input.uri.fsPath === uri.fsPath) {
+          return group.viewColumn;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Jump to Lua source (smart: reuse open tabs)
  */
 async function gotoLuaSource(block: LinkedConfigBlock): Promise<void> {
   if (!block.luaNode) {
@@ -101,13 +130,17 @@ async function gotoLuaSource(block: LinkedConfigBlock): Promise<void> {
   }
 
   const uri = vscode.Uri.file(block.absoluteFilePath);
-  const document = await vscode.workspace.openTextDocument(uri);
-  const editor = await vscode.window.showTextDocument(document);
-
   const position = new vscode.Position(
     block.luaNode.loc.start.line - 1,
     block.luaNode.loc.start.column
   );
+  const targetColumn = findOpenEditorColumn(uri);
+
+  const document = await vscode.workspace.openTextDocument(uri);
+  const editor = await vscode.window.showTextDocument(document, {
+    viewColumn: targetColumn,
+    preserveFocus: false
+  });
 
   editor.selection = new vscode.Selection(position, position);
   editor.revealRange(
