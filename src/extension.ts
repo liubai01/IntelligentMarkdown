@@ -234,7 +234,7 @@ async function handleAutoOpenPreview(
   
   if (onlyWithLuaConfig) {
     const content = document.getText();
-    if (!content.includes('```lua-config')) {
+    if (!content.includes('```lua-config') && !content.includes('```lua-wizard')) {
       return;
     }
   }
