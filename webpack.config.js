@@ -1,7 +1,7 @@
 const path = require('path');
 
 /** @type {import('webpack').Configuration} */
-const config = {
+const extensionConfig = {
   target: 'node',
   mode: 'none',
   entry: './src/extension.ts',
@@ -35,4 +35,41 @@ const config = {
   }
 };
 
-module.exports = config;
+/** @type {import('webpack').Configuration} */
+const webviewConfig = {
+  target: 'web',
+  mode: 'none',
+  entry: './src/editor/webview/codeEditorBundle.ts',
+  output: {
+    path: path.resolve(__dirname, 'media'),
+    filename: 'codeEditor.js',
+    library: {
+      type: 'window'
+    }
+  },
+  resolve: {
+    extensions: ['.ts', '.js']
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig.webview.json'
+            }
+          }
+        ]
+      }
+    ]
+  },
+  devtool: 'nosources-source-map',
+  performance: {
+    hints: false
+  }
+};
+
+module.exports = [extensionConfig, webviewConfig];

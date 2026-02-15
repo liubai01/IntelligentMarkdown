@@ -9,7 +9,11 @@ node_modules/**
 **/*.ts
 **/*.md
 !l10n/**
+!README.md
+!CHANGELOG.md
 webpack.config.js
 tsconfig.json
 vitest.config.ts
 test/**
+docs/**
+.github/**

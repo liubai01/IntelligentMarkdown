@@ -2,19 +2,17 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2021",
-    "lib": ["ES2021"],
-    "outDir": "dist",
-    "rootDir": "src",
+    "lib": ["ES2021", "DOM"],
+    "outDir": "media",
+    "rootDir": "src/editor/webview",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
     "sourceMap": true,
     "moduleResolution": "node"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "webview", "src/editor/webview"]
+  "include": ["src/editor/webview/**/*"],
+  "exclude": ["node_modules"]
 }

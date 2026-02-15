@@ -6,7 +6,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import hljs from 'highlight.js';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { LuaParser } from '../core/parser/luaParser';
@@ -60,9 +59,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             break;
           case 'gotoSource':
             await this.handleGotoSource(message);
-            break;
-          case 'requestHighlight':
-            this.handleHighlightRequest(webviewPanel.webview, message);
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
@@ -243,31 +239,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Handle syntax highlight request (from Webview)
-   */
-  private handleHighlightRequest(
-    webview: vscode.Webview,
-    message: { blockId: string; code: string; lang: string }
-  ): void {
-    try {
-      const lang = message.lang || 'lua';
-      let highlighted: string;
-      try {
-        highlighted = hljs.highlight(message.code, { language: lang, ignoreIllegals: true }).value;
-      } catch {
-        highlighted = hljs.highlightAuto(message.code).value;
-      }
-      webview.postMessage({
-        type: 'highlightResult',
-        blockId: message.blockId,
-        html: highlighted
-      });
-    } catch {
-      // Silent failure, keep last highlight
-    }
-  }
-
-  /**
    * Normalize indentation: extract and remove common indent prefix from non-first lines
    * First line unchanged (usually function keyword, no leading indent)
    */
@@ -343,12 +314,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     // Convert markdown to HTML and replace config blocks with controls
     const htmlContent = this.renderMarkdownWithControls(markdownText, linkedBlocks);
 
+    // CodeMirror bundle URI
+    const codeEditorScriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'codeEditor.js')
+    );
+
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
   <title>${vscode.l10n.t('Config Preview')}</title>
   <style>
     ${this.getStyles()}
@@ -363,6 +339,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       ${htmlContent}
     </div>
   </div>
+  <script src="${codeEditorScriptUri}"></script>
   <script>
     ${this.getScript(linkedBlocks)}
   </script>
@@ -638,7 +615,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * Render code input (overlay highlight + textarea edit + indent normalization)
+   * Render code input (CodeMirror 6 editor)
    */
   private renderCodeInput(block: LinkedConfigBlock, blockId: string): string {
     const t = vscode.l10n.t;
@@ -647,19 +624,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     // Indent normalization
     const { normalized, baseIndent } = this.normalizeIndentation(functionSource);
     this.codeNormCache.set(blockId, { normalized, baseIndent });
-
-    const escapedSource = this.escapeHtml(normalized);
-    const lineCount = normalized.split('\n').length;
-    const rows = Math.max(6, Math.min(lineCount + 1, 30));
-
-    // Syntax highlighting (server-side pre-render)
-    const lang = this.getLanguageFromFile(block.absoluteFilePath);
-    let highlightedHtml: string;
-    try {
-      highlightedHtml = hljs.highlight(normalized, { language: lang, ignoreIllegals: true }).value;
-    } catch {
-      highlightedHtml = this.escapeHtml(normalized);
-    }
 
     return `
 <div class="code-wrapper">
@@ -675,18 +639,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     </button>
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
-  <div class="code-overlay-container" id="${blockId}-container">
-    <pre class="code-highlight-pre" id="${blockId}-pre" aria-hidden="true"><code class="hljs" id="${blockId}-highlight">${highlightedHtml}</code></pre>
-    <textarea
-      id="${blockId}"
-      class="code-overlay-textarea"
-      rows="${rows}"
-      spellcheck="false"
-      onkeydown="handleCodeKeydown(event, '${blockId}')"
-      oninput="onCodeInput('${blockId}')"
-      onscroll="syncScroll('${blockId}')"
-    >${escapedSource}</textarea>
-  </div>
+  <div class="code-cm-container" id="${blockId}-cm"></div>
 </div>`;
   }
 
@@ -1467,120 +1420,36 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
-      /* Overlay 容器 */
-      .code-overlay-container {
-        position: relative;
+      /* CodeMirror 容器 */
+      .code-cm-container {
         width: 100%;
         border: 1px solid var(--input-border);
         border-radius: 6px;
         overflow: hidden;
-        background: var(--vscode-textCodeBlock-background, var(--input-bg));
         transition: border-color 0.15s, box-shadow 0.15s;
       }
 
-      .code-overlay-container:focus-within {
+      .code-cm-container:focus-within {
         border-color: var(--color-accent);
         box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
       }
 
-      /* 高亮层 (在下方) */
-      .code-highlight-pre {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        margin: 0;
-        padding: 10px 14px;
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        font-size: 12px;
-        line-height: 1.6;
-        tab-size: 4;
-        white-space: pre;
-        overflow: auto;
-        pointer-events: none;
-        z-index: 1;
-        background: transparent;
-      }
-
-      .code-highlight-pre code.hljs {
-        font-family: inherit;
-        font-size: inherit;
-        line-height: inherit;
-        background: transparent;
-        padding: 0;
-        border-radius: 0;
-        white-space: pre;
-        display: block;
-      }
-
-      /* 编辑层 (在上方, 文字透明) */
-      .code-overlay-textarea {
-        display: block;
-        position: relative;
-        width: 100%;
-        margin: 0;
-        padding: 10px 14px;
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        font-size: 12px;
-        line-height: 1.6;
-        tab-size: 4;
-        background: transparent;
-        color: transparent;
-        caret-color: var(--input-fg);
-        border: none;
-        resize: vertical;
-        white-space: pre;
-        overflow-wrap: normal;
-        overflow: auto;
-        z-index: 2;
+      /* CodeMirror 样式覆盖 */
+      .code-cm-container .cm-editor {
+        max-height: 600px;
         outline: none;
       }
 
-      .code-overlay-textarea::selection {
-        background: rgba(9, 105, 218, 0.3);
+      .code-cm-container .cm-editor.cm-focused {
+        outline: none;
       }
 
-      /* ========== highlight.js 主题 (VS Code 自适应) ========== */
-      .hljs {
-        color: var(--vscode-editor-foreground);
-        background: transparent;
+      .code-cm-container .cm-scroller {
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
       }
-
-      /* 深色主题 */
-      .hljs-keyword, .hljs-selector-tag { color: #569cd6; }
-      .hljs-literal { color: #569cd6; }
-      .hljs-string, .hljs-template-variable { color: #ce9178; }
-      .hljs-comment, .hljs-quote { color: #6a9955; font-style: italic; }
-      .hljs-number, .hljs-symbol { color: #b5cea8; }
-      .hljs-title, .hljs-title.function_ { color: #dcdcaa; }
-      .hljs-built_in { color: #4ec9b0; }
-      .hljs-variable, .hljs-attr { color: #9cdcfe; }
-      .hljs-type, .hljs-title.class_ { color: #4ec9b0; }
-      .hljs-meta, .hljs-meta .hljs-keyword { color: #569cd6; }
-      .hljs-params { color: #9cdcfe; }
-      .hljs-section { color: #dcdcaa; }
-      .hljs-name { color: #569cd6; }
-      .hljs-attribute { color: #9cdcfe; }
-      .hljs-addition { color: #b5cea8; }
-      .hljs-deletion { color: #ce9178; }
-
-      /* 浅色主题覆盖 */
-      body.vscode-light .hljs-keyword, body.vscode-light .hljs-selector-tag { color: #0000ff; }
-      body.vscode-light .hljs-literal { color: #0000ff; }
-      body.vscode-light .hljs-string, body.vscode-light .hljs-template-variable { color: #a31515; }
-      body.vscode-light .hljs-comment, body.vscode-light .hljs-quote { color: #008000; }
-      body.vscode-light .hljs-number, body.vscode-light .hljs-symbol { color: #098658; }
-      body.vscode-light .hljs-title, body.vscode-light .hljs-title.function_ { color: #795e26; }
-      body.vscode-light .hljs-built_in { color: #267f99; }
-      body.vscode-light .hljs-variable, body.vscode-light .hljs-attr { color: #001080; }
-      body.vscode-light .hljs-type, body.vscode-light .hljs-title.class_ { color: #267f99; }
-      body.vscode-light .hljs-meta, body.vscode-light .hljs-meta .hljs-keyword { color: #0000ff; }
-      body.vscode-light .hljs-params { color: #001080; }
-      body.vscode-light .hljs-name { color: #800000; }
-      body.vscode-light .hljs-attribute { color: #e50000; }
-      body.vscode-light .hljs-addition { color: #098658; }
-      body.vscode-light .hljs-deletion { color: #a31515; }
 
       /* ========== 更新动画 ========== */
       @keyframes flash {
@@ -1619,19 +1488,6 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     return `
       const vscode = acquireVsCodeApi();
       const blockData = ${JSON.stringify(blockDataMap)};
-      const highlightTimers = {};
-
-      /* ========== 监听来自扩展的消息（语法高亮结果） ========== */
-      window.addEventListener('message', function(event) {
-        var msg = event.data;
-        switch (msg.type) {
-          case 'highlightResult': {
-            var codeEl = document.getElementById(msg.blockId + '-highlight');
-            if (codeEl) codeEl.innerHTML = msg.html;
-            break;
-          }
-        }
-      });
 
       /* ========== 通用控件函数 ========== */
       function updateValue(blockId) {
@@ -1745,112 +1601,74 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      /* ========== 代码编辑器：高亮 + 重置 + 修改检测 ========== */
+      /* ========== 代码编辑器 (CodeMirror 6) ========== */
 
-      /** 请求扩展侧进行语法高亮（带去抖） */
-      function requestHighlight(blockId) {
-        const textarea = document.getElementById(blockId);
-        const data = blockData[blockId];
-        if (!textarea || !data) return;
+      /** 初始化所有 CodeMirror 编辑器 */
+      function initCodeEditors() {
+        if (typeof CodeEditor === 'undefined') return;
 
-        clearTimeout(highlightTimers[blockId]);
-        highlightTimers[blockId] = setTimeout(function() {
-          vscode.postMessage({
-            type: 'requestHighlight',
-            blockId: blockId,
-            code: textarea.value,
-            lang: data.lang || 'lua'
+        Object.keys(blockData).forEach(function(blockId) {
+          const data = blockData[blockId];
+          if (data.type !== 'code') return;
+
+          const container = document.getElementById(blockId + '-cm');
+          if (!container) return;
+
+          CodeEditor.create(blockId, container, data.originalCode, data.lang || 'lua', function(code) {
+            // 修改检测回调
+            const modified = code !== data.originalCode;
+            const hint = document.getElementById(blockId + '-modified');
+            if (hint) hint.style.display = modified ? 'flex' : 'none';
           });
-        }, 250);
-      }
-
-      /** textarea 输入时：检测修改 + 请求高亮 */
-      function onCodeInput(blockId) {
-        const textarea = document.getElementById(blockId);
-        const data = blockData[blockId];
-        if (!textarea || !data) return;
-
-        // 检测是否有修改
-        const modified = textarea.value !== data.originalCode;
-        const hint = document.getElementById(blockId + '-modified');
-        if (hint) hint.style.display = modified ? 'flex' : 'none';
-
-        // 请求语法高亮
-        requestHighlight(blockId);
-      }
-
-      /** 同步 textarea 与 pre 的滚动位置 */
-      function syncScroll(blockId) {
-        const textarea = document.getElementById(blockId);
-        const pre = document.getElementById(blockId + '-pre');
-        if (textarea && pre) {
-          pre.scrollTop = textarea.scrollTop;
-          pre.scrollLeft = textarea.scrollLeft;
-        }
+        });
       }
 
       /** 重置代码到原始内容 */
       function resetCode(blockId) {
-        const textarea = document.getElementById(blockId);
         const data = blockData[blockId];
-        if (!textarea || !data) return;
+        if (!data || typeof CodeEditor === 'undefined') return;
 
-        textarea.value = data.originalCode;
+        CodeEditor.setValue(blockId, data.originalCode);
 
         // 隐藏修改提示
         const hint = document.getElementById(blockId + '-modified');
         if (hint) hint.style.display = 'none';
-
-        // 重新请求高亮
-        requestHighlight(blockId);
       }
 
       /** 保存代码（还原缩进后发送） */
       function saveCode(blockId) {
-        const textarea = document.getElementById(blockId);
         const data = blockData[blockId];
-        if (!textarea || !data) return;
+        if (!data || typeof CodeEditor === 'undefined') return;
+
+        const code = CodeEditor.getValue(blockId);
 
         vscode.postMessage({
           type: 'saveCode',
           file: data.file,
           key: data.key,
-          code: textarea.value,
+          code: code,
           baseIndent: data.baseIndent || ''
         });
 
         // 保存后更新 originalCode 基线
-        data.originalCode = textarea.value;
+        data.originalCode = code;
         const hint = document.getElementById(blockId + '-modified');
         if (hint) hint.style.display = 'none';
 
         // 闪烁动画
-        const block = textarea.closest('.config-block');
-        if (block) {
-          block.classList.remove('updated');
-          void block.offsetWidth;
-          block.classList.add('updated');
+        const cmContainer = document.getElementById(blockId + '-cm');
+        if (cmContainer) {
+          const block = cmContainer.closest('.config-block');
+          if (block) {
+            block.classList.remove('updated');
+            void block.offsetWidth;
+            block.classList.add('updated');
+          }
         }
       }
 
-      function handleCodeKeydown(event, blockId) {
-        // Tab 插入制表符
-        if (event.key === 'Tab') {
-          event.preventDefault();
-          const ta = document.getElementById(blockId);
-          if (!ta) return;
-          const start = ta.selectionStart;
-          const end = ta.selectionEnd;
-          ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
-          ta.selectionStart = ta.selectionEnd = start + 4;
-          onCodeInput(blockId);
-        }
-        // Ctrl+S / Cmd+S 保存
-        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-          event.preventDefault();
-          saveCode(blockId);
-        }
-      }
+      // 初始化 CodeMirror 编辑器
+      initCodeEditors();
 
       function gotoSource(file, line) {
         vscode.postMessage({
