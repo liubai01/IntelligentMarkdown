@@ -1,6 +1,20 @@
 # lua-config Reference
 
-> config.md syntax reference for `lua-config` blocks.
+> config.md syntax reference for `lua-config` blocks, Mermaid diagrams, and probe navigation.
+
+---
+
+## Table of Contents
+
+- [Block Syntax](#block-syntax)
+- [Required Fields](#required-fields)
+- [Optional Fields](#optional-fields)
+- [Types](#types) — `number` · `slider` · `boolean` · `string` · `select` · `table` · `code`
+- [Mermaid Diagrams](#mermaid-diagrams)
+- [Probe Navigation](#probe-navigation)
+- [Link Status](#link-status)
+- [VS Code Settings](#vs-code-settings)
+- [Quick Examples](#quick-examples)
 
 ---
 
@@ -233,6 +247,140 @@ No additional parameters. The `key` should point to a Lua function value.
 
 ---
 
+## Mermaid Diagrams
+
+The preview panel natively renders [Mermaid](https://mermaid.js.org/) diagrams. Use standard fenced code blocks with language `mermaid`:
+
+````markdown
+```mermaid
+flowchart TD
+    A[Start] --> B{Condition}
+    B -->|Yes| C[Action]
+    B -->|No| D[End]
+```
+````
+
+**Supported diagram types:**
+
+| Type | Keyword | Description |
+|------|---------|-------------|
+| Flowchart | `flowchart` / `graph` | Flow diagrams with various node shapes |
+| Sequence | `sequenceDiagram` | Interaction between actors over time |
+| Class | `classDiagram` | UML class diagrams |
+| State | `stateDiagram-v2` | State machine diagrams |
+| Gantt | `gantt` | Project timeline charts |
+| Pie | `pie` | Pie charts |
+| ER | `erDiagram` | Entity-relationship diagrams |
+| Git Graph | `gitGraph` | Git branch visualization |
+
+**Theme:** Mermaid automatically adapts to VS Code's current theme (light / dark).
+
+**Example — Sequence Diagram:**
+
+````markdown
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant DB as Database
+
+    C->>S: Request
+    S->>DB: Query
+    DB-->>S: Result
+    S-->>C: Response
+```
+````
+
+**Example — State Diagram:**
+
+````markdown
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Running: Start
+    Running --> Paused: Pause
+    Paused --> Running: Resume
+    Running --> [*]: Stop
+```
+````
+
+> 💡 Mermaid blocks can be mixed freely with `lua-config` blocks, headings, and prose in the same Markdown file.
+
+---
+
+## Probe Navigation
+
+Probe markers let you create **clickable links** in Markdown that jump directly to specific locations in Lua source files.
+
+### Step 1 — Place Markers in Lua
+
+Add a comment with the `@probe` tag in your Lua file:
+
+```lua
+-- @probe:marker_name
+```
+
+Both colon and space separators are supported:
+
+```lua
+-- @probe:reward_calc      ← colon separator
+-- @probe reward_calc      ← space separator
+```
+
+**Example:**
+
+```lua
+-- @probe:settings_def
+GameConfig = {
+    maxPlayers = 16,
+    tickRate = 64,
+}
+
+-- @probe:damage_formula
+function GameConfig.calculateDamage(attacker, target)
+    local base = attacker.attack - target.defense
+    return math.max(1, base)
+end
+```
+
+### Step 2 — Link from Markdown
+
+Use the `probe://` URL scheme in standard Markdown links:
+
+```markdown
+[Display Text](probe://./relative/path/to/file.lua#marker_name)
+```
+
+| Part | Description |
+|------|-------------|
+| `Display Text` | Clickable text shown to the user |
+| `probe://` | URL scheme (required) |
+| `./relative/path.lua` | File path relative to the Markdown file |
+| `#marker_name` | Probe marker name (after the `#`) |
+
+**Example:**
+
+```markdown
+See the [settings definition](probe://./game_config.lua#settings_def) for server limits.
+
+The [damage formula](probe://./game_config.lua#damage_formula) uses a base calculation.
+```
+
+### Behavior
+
+| Context | What happens on click |
+|---------|----------------------|
+| **Markdown editor** (Ctrl+Click) | Opens the Lua file and scrolls to the marker line |
+| **Preview panel** | Renders as a `📍` link; click to jump to source |
+
+### Error Handling
+
+- If the probe marker is **not found** in the target file, the link appears with a ⚠️ strikethrough style in the preview panel.
+- If the target **file does not exist**, no link is created.
+- Markers are **cached** per file and refreshed automatically when the file changes.
+
+---
+
 ## Link Status
 
 Each block shows a status indicator:
@@ -324,5 +472,36 @@ file: ./game_config.lua
 key: GameConfig.onPlayerDeath
 type: code
 label: On Player Death Handler
+```
+</details>
+
+<details>
+<summary><b>Mermaid flowchart</b></summary>
+
+````markdown
+```mermaid
+flowchart LR
+    Input --> Process --> Output
+    Process --> Error --> Retry --> Process
+```
+````
+</details>
+
+<details>
+<summary><b>Probe link</b></summary>
+
+Lua file (`game.lua`):
+
+```lua
+-- @probe:init_section
+function Game.init()
+    -- initialization code
+end
+```
+
+Markdown file:
+
+```markdown
+Jump to [initialization code](probe://./game.lua#init_section).
 ```
 </details>
