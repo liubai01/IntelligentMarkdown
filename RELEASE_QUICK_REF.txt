@@ -1,0 +1,88 @@
+═══════════════════════════════════════════════════════════════
+  🚀 RELEASE QUICK REFERENCE - config.md Extension
+═══════════════════════════════════════════════════════════════
+
+📋 STANDARD RELEASE (4 Commands)
+─────────────────────────────────────────────────────────────
+
+1. Update version in package.json (e.g., 0.4.1 → 0.4.2)
+
+2. Run these commands:
+
+   npm test
+   git add package.json
+   git commit -m "chore: bump version to 0.4.2"
+   git push origin master
+   git tag v0.4.2
+   git push origin v0.4.2
+
+3. ✅ Done! GitHub Actions auto-publishes to Marketplace
+
+═══════════════════════════════════════════════════════════════
+
+⚙️ FIRST TIME SETUP (Only Once)
+─────────────────────────────────────────────────────────────
+
+1. Create PAT at: https://dev.azure.com/
+   → Personal Access Tokens → New Token
+   → Scope: Marketplace (Manage) ✅
+
+2. Add to GitHub:
+   https://github.com/liubai01/IntelligentMarkdown/settings/secrets/actions
+   → New secret: VSCE_PAT = your_token
+
+3. Enable permissions:
+   https://github.com/liubai01/IntelligentMarkdown/settings/actions
+   → Read and write permissions ✅
+
+═══════════════════════════════════════════════════════════════
+
+📊 MONITORING
+─────────────────────────────────────────────────────────────
+
+• Actions: https://github.com/liubai01/IntelligentMarkdown/actions
+• Releases: https://github.com/liubai01/IntelligentMarkdown/releases
+• Marketplace: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+
+═══════════════════════════════════════════════════════════════
+
+🆘 TROUBLESHOOTING
+─────────────────────────────────────────────────────────────
+
+Problem              | Solution
+─────────────────────|─────────────────────────────────────
+Workflow not trigger | Tag must be vX.Y.Z (with 'v' prefix)
+PAT expired          | Update VSCE_PAT secret in GitHub
+Version exists       | Bump version number and retry
+Tests fail           | Fix tests before creating tag
+
+═══════════════════════════════════════════════════════════════
+
+📚 DOCUMENTATION
+─────────────────────────────────────────────────────────────
+
+• Quick Guide:    docs/QUICK_RELEASE.md
+• Full Process:   docs/RELEASE.md
+• Setup Guide:    docs/SETUP_GITHUB_ACTIONS.md
+• Checklist:      .github/RELEASE_CHECKLIST.md
+• Summary:        AUTOMATION_SUMMARY.md
+
+═══════════════════════════════════════════════════════════════
+
+🎯 FOR AI ASSISTANTS
+─────────────────────────────────────────────────────────────
+
+✅ DO:
+  • Read docs/QUICK_RELEASE.md for standard process
+  • Update package.json version
+  • Run tests before release
+  • Create git tag to trigger automation
+  • Monitor GitHub Actions workflow
+
+❌ DON'T:
+  • Expose or commit PAT tokens
+  • Manually run vsce publish (automated)
+  • Skip git tag (required for automation)
+  • Forget to push tag to origin
+
+═══════════════════════════════════════════════════════════════
