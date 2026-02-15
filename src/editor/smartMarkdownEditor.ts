@@ -920,17 +920,23 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         blockquoteLines = [];
       }
 
-      // 标题
+      // 标题 (with slug-based id for scroll targeting)
       if (line.startsWith('### ')) {
-        result.push(`<h3>${this.processInlineMarkdown(line.slice(4))}</h3>`);
+        const text = line.slice(4);
+        const slug = this.slugify(text);
+        result.push(`<h3 id="${slug}">${this.processInlineMarkdown(text)}</h3>`);
         continue;
       }
       if (line.startsWith('## ')) {
-        result.push(`<h2>${this.processInlineMarkdown(line.slice(3))}</h2>`);
+        const text = line.slice(3);
+        const slug = this.slugify(text);
+        result.push(`<h2 id="${slug}">${this.processInlineMarkdown(text)}</h2>`);
         continue;
       }
       if (line.startsWith('# ')) {
-        result.push(`<h1>${this.processInlineMarkdown(line.slice(2))}</h1>`);
+        const text = line.slice(2);
+        const slug = this.slugify(text);
+        result.push(`<h1 id="${slug}">${this.processInlineMarkdown(text)}</h1>`);
         continue;
       }
 
@@ -979,6 +985,26 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       // 代码
       .replace(/`([^`]+)`/g, '<code>$1</code>');
+  }
+
+  /**
+   * Generate a URL-friendly slug from heading text (GitHub-style).
+   * Strips HTML, emoji, lowercases, replaces spaces/special with hyphens.
+   */
+  private slugify(text: string): string {
+    return text
+      // Remove inline markdown (bold, italic, code)
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove emoji (Unicode emoji range)
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .trim()
+      .toLowerCase()
+      // Replace non-alphanumeric (keep CJK, letters, digits) with hyphens
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      // Remove leading/trailing hyphens
+      .replace(/^-+|-+$/g, '');
   }
 
   /**
@@ -1803,6 +1829,23 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         animation: flash 0.6s ease-out;
       }
 
+      /* ========== Scroll highlight animation ========== */
+      @keyframes scrollHighlight {
+        0% { background-color: rgba(55, 148, 255, 0.25); }
+        100% { background-color: transparent; }
+      }
+
+      .scroll-highlight {
+        animation: scrollHighlight 2s ease-out;
+        border-radius: 4px;
+        scroll-margin-top: 60px;
+      }
+
+      /* Add scroll-margin to all headings for sticky toolbar offset */
+      h1[id], h2[id], h3[id] {
+        scroll-margin-top: 60px;
+      }
+
       /* ========== Copy toast ========== */
       .copy-toast {
         position: fixed;
@@ -2125,13 +2168,37 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }, 2500);
       }
 
-      /** Listen for clipboard done confirmation from extension */
+      /** Listen for messages from extension */
       window.addEventListener('message', function(event) {
         var msg = event.data;
         if (msg && msg.type === 'clipboardDone') {
           showCopyToast('已复制');
         }
+        if (msg && msg.type === 'scrollToSection') {
+          scrollToSection(msg.sectionId);
+        }
       });
+
+      /** Scroll to a section by its id and highlight it */
+      function scrollToSection(sectionId) {
+        if (!sectionId) return;
+        var el = document.getElementById(sectionId);
+        if (!el) {
+          // Try fuzzy: match partial slug
+          var all = document.querySelectorAll('[id]');
+          for (var i = 0; i < all.length; i++) {
+            if (all[i].id.indexOf(sectionId) !== -1) {
+              el = all[i];
+              break;
+            }
+          }
+        }
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Highlight animation
+        el.classList.add('scroll-highlight');
+        setTimeout(function() { el.classList.remove('scroll-highlight'); }, 2000);
+      }
 
       function gotoSource(file, line) {
         vscode.postMessage({

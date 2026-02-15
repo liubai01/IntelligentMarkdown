@@ -5,3 +5,5 @@
 export { LuaConfigDocumentLinkProvider } from './documentLinkProvider';
 export { LuaConfigHoverProvider } from './hoverProvider';
 export { LuaConfigDecorationProvider } from './decorationProvider';
+
+export { LuaDocLinkProvider } from './luaDocLinkProvider';

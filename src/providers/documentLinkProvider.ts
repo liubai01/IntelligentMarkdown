@@ -38,23 +38,23 @@ export class LuaConfigDocumentLinkProvider implements vscode.DocumentLinkProvide
     const blocks = this.configParser.parseMarkdown(text);
 
     if (blocks.length > 0) {
-      // Link to Lua files
-      const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
+    // Link to Lua files
+    const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
 
-      // Create links for each config block
-      for (const linkedBlock of linkedBlocks) {
-        // Create file field link
-        const fileLink = this.createFileLinkForBlock(document, linkedBlock);
-        if (fileLink) {
-          links.push(fileLink);
-        }
-
-        // Create key field link (jump to specific line)
-        const keyLink = this.createKeyLinkForBlock(document, linkedBlock);
-        if (keyLink) {
-          links.push(keyLink);
-        }
+    // Create links for each config block
+    for (const linkedBlock of linkedBlocks) {
+      // Create file field link
+      const fileLink = this.createFileLinkForBlock(document, linkedBlock);
+      if (fileLink) {
+        links.push(fileLink);
       }
+
+      // Create key field link (jump to specific line)
+      const keyLink = this.createKeyLinkForBlock(document, linkedBlock);
+      if (keyLink) {
+        links.push(keyLink);
+      }
+    }
     }
 
     // Parse probe:// links

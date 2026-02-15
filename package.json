@@ -40,9 +40,11 @@
   ],
   "activationEvents": [
     "onLanguage:markdown",
+    "onLanguage:lua",
     "onCommand:intelligentMarkdown.showVariableValue",
     "onCommand:intelligentMarkdown.refreshBindings",
-    "onCommand:intelligentMarkdown.openPreview"
+    "onCommand:intelligentMarkdown.openPreview",
+    "onCommand:intelligentMarkdown.gotoDoc"
   ],
   "l10n": "./l10n",
   "main": "./dist/extension.js",
@@ -63,6 +65,11 @@
         "title": "Open Config Preview",
         "category": "config.md",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "intelligentMarkdown.gotoDoc",
+        "title": "Go to Doc Section",
+        "category": "config.md"
       }
     ],
     "menus": {

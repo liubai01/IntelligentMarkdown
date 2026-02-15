@@ -8,7 +8,8 @@ import * as path from 'path';
 import {
   LuaConfigDocumentLinkProvider,
   LuaConfigHoverProvider,
-  LuaConfigDecorationProvider
+  LuaConfigDecorationProvider,
+  LuaDocLinkProvider
 } from './providers';
 import { showVariableValueCommand } from './commands';
 import { SmartMarkdownEditorProvider } from './editor/smartMarkdownEditor';
@@ -31,6 +32,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerDocumentLinkProvider(
       { language: 'markdown', scheme: 'file' },
       linkProvider
+    )
+  );
+
+  // Register Lua doc link provider (-- @doc: comments in Lua files)
+  const luaDocLinkProvider = new LuaDocLinkProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDocumentLinkProvider(
+      { language: 'lua', scheme: 'file' },
+      luaDocLinkProvider
     )
   );
 
@@ -111,6 +121,49 @@ export function activate(context: vscode.ExtensionContext): void {
         } catch (error) {
           vscode.window.showErrorMessage(
             vscode.l10n.t('Unable to open probe target: {0}', error instanceof Error ? error.message : String(error))
+          );
+        }
+      }
+    )
+  );
+
+  // Register command: goto doc section (Lua → Markdown preview)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.gotoDoc',
+      async (args: { mdFile: string; sectionId: string }) => {
+        try {
+          const mdFilePath = args.mdFile;
+          const sectionId = args.sectionId;
+
+          if (!mdFilePath) {
+            vscode.window.showWarningMessage(
+              vscode.l10n.t('No Markdown file found for this Lua file')
+            );
+            return;
+          }
+
+          // Open the Markdown document
+          const mdUri = vscode.Uri.file(mdFilePath);
+          const mdDocument = await vscode.workspace.openTextDocument(mdUri);
+
+          // Open/reveal the preview panel
+          await openPreviewForDocument(context, mdDocument);
+
+          // Send scroll message to the webview after a short delay
+          // to allow the webview to finish rendering
+          if (currentPreviewPanel) {
+            const panel = currentPreviewPanel;
+            setTimeout(() => {
+              panel.webview.postMessage({
+                type: 'scrollToSection',
+                sectionId: sectionId
+              });
+            }, 600);
+          }
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            vscode.l10n.t('Unable to open doc target: {0}', error instanceof Error ? error.message : String(error))
           );
         }
       }

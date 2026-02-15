@@ -166,10 +166,14 @@ stateDiagram-v2
 
 ## Instructions
 
-- **Probe Links**: Click `📍` links to jump directly to specific locations in the Lua source code
+- **Probe Links** (Markdown → Lua): Click `📍` links to jump directly to specific locations in the Lua source code
   - Lua comment: `-- @probe:marker_name`
   - Lua function: use the function path directly, e.g. `QuestSystem.onQuestComplete`
   - Markdown format: `[text](probe://./file.lua#marker_name_or_function_path)`
+- **Doc Links** (Lua → Markdown Preview): Click `@doc` links in Lua code to open the preview and scroll to a section
+  - Simple format: `-- @doc:section-slug` (auto-discovers the .config.md file)
+  - Explicit format: `-- @doc:./file.config.md#section-slug`
+  - Section slugs match heading text (e.g. "Quest Settings" → `quest-settings`)
 - **Mermaid Diagrams**: Architecture and flow diagrams are rendered automatically in the preview panel
 - **Config Controls**: Edit quest settings directly with sliders, toggles, and dropdowns
 - **Reward Table**: Batch edit quest rewards in the table view
