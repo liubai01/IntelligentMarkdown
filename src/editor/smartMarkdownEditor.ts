@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { exec } from 'child_process';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { WizardBlockParser } from '../core/parser/wizardBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
@@ -922,8 +923,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     outputChannel.appendLine('');
 
     // Execute commands sequentially with progress
-    const { exec } = require('child_process') as typeof import('child_process');
-
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
