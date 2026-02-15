@@ -1,0 +1,83 @@
+name: Publish Extension
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags (e.g., v0.4.2, v1.0.0)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Compile production build
+        run: npm run compile
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Verify version matches package.json
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ steps.get_version.outputs.VERSION }}" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Error: Tag version (${{ steps.get_version.outputs.VERSION }}) doesn't match package.json ($PACKAGE_VERSION)"
+            exit 1
+          fi
+          echo "✅ Version verified: $PACKAGE_VERSION"
+
+      - name: Package extension
+        run: npx vsce package
+
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: '*.vsix'
+          generate_release_notes: true
+          body: |
+            ## 🎉 New Release: v${{ steps.get_version.outputs.VERSION }}
+            
+            This release has been automatically published to the VS Code Marketplace.
+            
+            **Installation:**
+            - Search for "config.md" in VS Code Extensions
+            - Or visit: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+            
+            **What's Changed:**
+            See below for automatically generated release notes.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "✅ Successfully published v${{ steps.get_version.outputs.VERSION }} to VS Code Marketplace"
+          echo "📦 GitHub Release created: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.VERSION }}"
+          echo "🌐 Marketplace: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Failed to publish v${{ steps.get_version.outputs.VERSION }}"
+          echo "Check the logs above for details"
+          exit 1
