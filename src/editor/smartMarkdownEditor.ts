@@ -61,10 +61,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await this.updateWebview(document, webviewPanel.webview);
             break;
           case 'gotoSource':
-            await this.handleGotoSource(message);
+            await this.handleGotoSource(message, document.uri);
             break;
           case 'gotoProbe':
-            await this.handleGotoSource(message);
+            await this.handleGotoSource(message, document.uri);
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
@@ -228,13 +228,26 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Jump to source (smart: reuse already-open editor tabs)
+   * Jump to source (smart: reuse already-open editor tabs).
+   * Fallback priority when file is not already open:
+   *   1. Open in the same column as the Markdown source file
+   *   2. ViewColumn.Beside
    */
-  private async handleGotoSource(message: { file: string; line: number }): Promise<void> {
+  private async handleGotoSource(
+    message: { file: string; line: number },
+    markdownUri?: vscode.Uri
+  ): Promise<void> {
     try {
       const uri = vscode.Uri.file(message.file);
       const position = new vscode.Position(Math.max(0, message.line - 1), 0);
-      const targetColumn = this.findOpenEditorColumn(uri);
+
+      // 1. Check if target file is already open
+      let targetColumn = this.findOpenEditorColumn(uri);
+
+      // 2. If not open, try to open in the same column as the Markdown source file
+      if (targetColumn === undefined && markdownUri) {
+        targetColumn = this.findOpenEditorColumn(markdownUri);
+      }
 
       const document = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(document, {

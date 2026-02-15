@@ -11,6 +11,7 @@ This document manages the quest system. It includes architecture diagrams powere
 - [Quest Complete Handler](probe://./quest_system.lua#quest_complete_handler) — the main completion callback
 - [EXP Calculation Logic](probe://./quest_system.lua#exp_calculation) — how experience is calculated
 - [Rare Quest Logic](probe://./quest_system.lua#rare_quest_logic) — special handling for rare quests
+- [Jump to onQuestComplete function](probe://./quest_system.lua#QuestSystem.onQuestComplete) — jump by function name (no @probe needed)
 
 ## System Architecture
 
@@ -162,8 +163,9 @@ stateDiagram-v2
 ## Instructions
 
 - **Probe Links**: Click `📍` links to jump directly to specific locations in the Lua source code
-  - Lua format: `-- @probe:marker_name`
-  - Markdown format: `[text](probe://./file.lua#marker_name)`
+  - Lua comment: `-- @probe:marker_name`
+  - Lua function: use the function path directly, e.g. `QuestSystem.onQuestComplete`
+  - Markdown format: `[text](probe://./file.lua#marker_name_or_function_path)`
 - **Mermaid Diagrams**: Architecture and flow diagrams are rendered automatically in the preview panel
 - **Config Controls**: Edit quest settings directly with sliders, toggles, and dropdowns
 - **Reward Table**: Batch edit quest rewards in the table view

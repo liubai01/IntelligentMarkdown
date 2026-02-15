@@ -310,9 +310,21 @@ stateDiagram-v2
 
 ## Probe Navigation
 
-Probe markers let you create **clickable links** in Markdown that jump directly to specific locations in Lua source files.
+Probe links let you create **clickable links** in Markdown that jump directly to specific locations in Lua source files.
 
-### Step 1 — Place Markers in Lua
+### Target Types
+
+The `#name` part of a probe link is resolved in order:
+
+| Priority | Target | Description |
+|----------|--------|-------------|
+| 1 | `@probe` marker | Comment marker `-- @probe:name` in Lua |
+| 2 | Function definition | `function A.B()`, `A.B = function()`, etc. |
+| 3 | Variable / table path | `A.B.C = value` |
+
+This means you can jump to **any function or variable** without placing a probe comment — the comment is only needed for arbitrary locations (e.g. a specific line inside a function).
+
+### Method A — Jump by Probe Marker
 
 Add a comment with the `@probe` tag in your Lua file:
 
@@ -343,12 +355,32 @@ function GameConfig.calculateDamage(attacker, target)
 end
 ```
 
-### Step 2 — Link from Markdown
+### Method B — Jump by Function / Variable Name
+
+No probe comment is needed. Use the function's full path directly:
+
+```lua
+-- No @probe comment needed!
+function QuestSystem.onQuestComplete(player, quest)
+    -- ...
+end
+
+QuestSystem.Settings = {
+    MaxActiveQuests = 5,
+}
+```
+
+```markdown
+[Jump to onQuestComplete](probe://./quest_system.lua#QuestSystem.onQuestComplete)
+[Jump to Settings table](probe://./quest_system.lua#QuestSystem.Settings)
+```
+
+### Link Syntax
 
 Use the `probe://` URL scheme in standard Markdown links:
 
 ```markdown
-[Display Text](probe://./relative/path/to/file.lua#marker_name)
+[Display Text](probe://./relative/path/to/file.lua#target_name)
 ```
 
 | Part | Description |
@@ -356,28 +388,33 @@ Use the `probe://` URL scheme in standard Markdown links:
 | `Display Text` | Clickable text shown to the user |
 | `probe://` | URL scheme (required) |
 | `./relative/path.lua` | File path relative to the Markdown file |
-| `#marker_name` | Probe marker name (after the `#`) |
+| `#target_name` | Probe marker, function path, or variable path |
 
-**Example:**
+**Examples:**
 
 ```markdown
 See the [settings definition](probe://./game_config.lua#settings_def) for server limits.
 
-The [damage formula](probe://./game_config.lua#damage_formula) uses a base calculation.
+The [damage formula](probe://./game_config.lua#GameConfig.calculateDamage) uses a base calculation.
 ```
 
 ### Behavior
 
 | Context | What happens on click |
 |---------|----------------------|
-| **Markdown editor** (Ctrl+Click) | Opens the Lua file and scrolls to the marker line |
+| **Markdown editor** (Ctrl+Click) | Opens the Lua file and scrolls to the target line |
 | **Preview panel** | Renders as a `📍` link; click to jump to source |
+
+**Smart window reuse:** When clicking a probe link in the preview panel:
+1. If the target file is **already open** in an editor tab → activates that tab and scrolls
+2. If not open → opens in the **same column as the Markdown source file**
+3. Only falls back to a new side column if no existing column is found
 
 ### Error Handling
 
-- If the probe marker is **not found** in the target file, the link appears with a ⚠️ strikethrough style in the preview panel.
+- If the target name is **not found** (no matching probe, function, or variable), the link appears with a ⚠️ strikethrough style in the preview panel.
 - If the target **file does not exist**, no link is created.
-- Markers are **cached** per file and refreshed automatically when the file changes.
+- Probe markers are **cached** per file and refreshed automatically when the file changes.
 
 ---
 
@@ -503,5 +540,11 @@ Markdown file:
 
 ```markdown
 Jump to [initialization code](probe://./game.lua#init_section).
+```
+
+**Jump by function name (no @probe comment needed):**
+
+```markdown
+Jump to [onPlayerDeath](probe://./game_config.lua#GameConfig.onPlayerDeath).
 ```
 </details>

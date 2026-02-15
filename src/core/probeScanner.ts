@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { LuaParser } from './parser/luaParser';
 
 /** A single probe marker found in a source file */
 export interface ProbeMarker {
@@ -148,9 +149,14 @@ export class ProbeScanner {
   }
 
   /**
-   * Resolve a probe link to a file + line target
+   * Resolve a probe link to a file + line target.
+   * Resolution order:
+   *   1. @probe:name comment markers
+   *   2. Function declarations (function A.B(), A.B = function(), etc.)
+   *   3. Variable / table path assignments (A.B.C = ...)
+   *
    * @param filePath Relative file path from probe URL
-   * @param probeName Probe marker name
+   * @param probeName Probe marker name (or function/variable path)
    * @param baseDir Base directory (usually the Markdown file's directory)
    * @returns Resolved target or null if not found
    */
@@ -160,20 +166,58 @@ export class ProbeScanner {
       ? filePath
       : path.resolve(baseDir, filePath);
 
-    // Scan the file for probe markers
-    const markers = this.scanFile(absolutePath);
-
-    // Find the matching marker
-    const marker = markers.find(m => m.name === probeName);
-    if (!marker) {
+    if (!fs.existsSync(absolutePath)) {
       return null;
     }
 
-    return {
-      filePath: absolutePath,
-      line: marker.line,
-      column: marker.column,
-    };
+    // 1. Try @probe comment markers first
+    const markers = this.scanFile(absolutePath);
+    const marker = markers.find(m => m.name === probeName);
+    if (marker) {
+      return {
+        filePath: absolutePath,
+        line: marker.line,
+        column: marker.column,
+      };
+    }
+
+    // 2. Fall back to function / variable lookup via LuaParser
+    return this.resolveByAst(absolutePath, probeName);
+  }
+
+  /**
+   * Try to find a function or variable definition by parsing the Lua AST.
+   * Tries findFunctionByFullPath first, then findNodeByPath.
+   */
+  private resolveByAst(absolutePath: string, name: string): ProbeTarget | null {
+    try {
+      const content = fs.readFileSync(absolutePath, 'utf-8');
+      const parser = new LuaParser(content);
+
+      // Try function lookup first (covers function A.B(), A.B = function(), etc.)
+      const funcResult = parser.findFunctionByFullPath(name);
+      if (funcResult.success && funcResult.node) {
+        return {
+          filePath: absolutePath,
+          line: funcResult.node.loc.start.line,
+          column: funcResult.node.loc.start.column,
+        };
+      }
+
+      // Try variable / table path lookup
+      const nodeResult = parser.findNodeByPath(name);
+      if (nodeResult.success && nodeResult.node) {
+        return {
+          filePath: absolutePath,
+          line: nodeResult.node.loc.start.line,
+          column: nodeResult.node.loc.start.column,
+        };
+      }
+    } catch {
+      // Parse error — ignore and return null
+    }
+
+    return null;
   }
 
   /**

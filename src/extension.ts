@@ -84,11 +84,18 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'intelligentMarkdown.gotoProbe',
-      async (filePath: string, line: number) => {
+      async (filePath: string, line: number, markdownFsPath?: string) => {
         try {
           const uri = vscode.Uri.file(filePath);
           const position = new vscode.Position(Math.max(0, line - 1), 0);
-          const targetColumn = findOpenEditorColumn(uri);
+
+          // 1. Check if target file is already open
+          let targetColumn = findOpenEditorColumn(uri);
+
+          // 2. If not open, try to open in the same column as the Markdown source
+          if (targetColumn === undefined && markdownFsPath) {
+            targetColumn = findOpenEditorColumn(vscode.Uri.file(markdownFsPath));
+          }
 
           const document = await vscode.workspace.openTextDocument(uri);
           const editor = await vscode.window.showTextDocument(document, {
