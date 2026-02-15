@@ -899,11 +899,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       return;
     }
 
-    // Determine working directory
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || path.dirname(document.uri.fsPath);
+    // Determine working directory (resolve relative to markdown file location)
+    const mdDir = path.dirname(document.uri.fsPath);
     const cwd = message.cwd
-      ? path.resolve(workspaceRoot, message.cwd)
-      : workspaceRoot;
+      ? path.resolve(mdDir, message.cwd)
+      : mdDir;
 
     // Confirm execution
     const confirm = await vscode.window.showWarningMessage(

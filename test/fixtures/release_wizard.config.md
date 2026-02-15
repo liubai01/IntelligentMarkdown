@@ -13,7 +13,7 @@ file: ./../../package.json
 action: run
 label: Publish New Version
 icon: 🚀
-cwd: .
+cwd: ./../..
 variables:
   current_version:
     type: json
