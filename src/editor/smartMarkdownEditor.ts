@@ -70,6 +70,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await vscode.env.clipboard.writeText(message.text || '');
             webviewPanel.webview.postMessage({ type: 'clipboardDone' });
             break;
+          case 'sendToComposer':
+            await this.handleSendToComposer(message);
+            break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
             break;
@@ -263,6 +266,46 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
     } catch (error) {
       vscode.window.showErrorMessage(vscode.l10n.t('Unable to open file'));
+    }
+  }
+
+  /**
+   * Handle "Send to AI" — build context with source location and send to Cursor composer
+   */
+  private async handleSendToComposer(
+    message: { text: string; sourceLocation: string }
+  ): Promise<void> {
+    try {
+      const contextText = message.text || '';
+      const sourceLocation = message.sourceLocation || '';
+
+      // Build a prompt that includes the source file reference
+      const prompt = sourceLocation
+        ? `${vscode.l10n.t('The following code is from')} \`${sourceLocation}\`:\n\n${contextText}`
+        : contextText;
+
+      // Try to use Cursor's deeplink.prompt.prefill (creates new chat with confirmation dialog)
+      try {
+        await vscode.commands.executeCommand('deeplink.prompt.prefill', { text: prompt });
+      } catch {
+        // Fallback: copy to clipboard and focus composer
+        await vscode.env.clipboard.writeText(prompt);
+        try {
+          await vscode.commands.executeCommand('composer.focusComposer');
+        } catch {
+          // If composer command not available, try generic chat
+          try {
+            await vscode.commands.executeCommand('workbench.action.chat.open');
+          } catch {
+            // ignore
+          }
+        }
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('Code context copied to clipboard. Press Ctrl+V to paste into chat.')
+        );
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(vscode.l10n.t('Failed to send to AI'));
     }
   }
 
@@ -800,6 +843,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     </button>
     <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context (Ctrl+V to paste)')}">
       📋 ${t('Copy as Context')}
+    </button>
+    <button class="code-btn code-ai-btn" onclick="sendCodeToComposer('${blockId}')" title="${t('Copy source location and send to Cursor AI chat')}">
+      🤖 ${t('Send to AI')}
     </button>
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
@@ -1719,6 +1765,17 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
+      .code-ai-btn {
+        background: rgba(130, 80, 223, 0.1);
+        color: var(--color-fg-default);
+        border-color: rgba(130, 80, 223, 0.3);
+      }
+
+      .code-ai-btn:hover {
+        border-color: rgba(130, 80, 223, 0.6);
+        background: rgba(130, 80, 223, 0.2);
+      }
+
       /* CodeMirror 容器 */
       .code-cm-container {
         width: 100%;
@@ -1925,7 +1982,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         step: block.step || 1,
         lang: block.type === 'code' ? this.getLanguageFromFile(block.absoluteFilePath) : undefined,
         baseIndent: normData?.baseIndent || '',
-        originalCode: normData?.normalized || ''
+        originalCode: normData?.normalized || '',
+        absoluteFilePath: block.absoluteFilePath || '',
+        startLine: block.luaNode?.loc.start.line || 0,
+        endLine: block.luaNode?.loc.end.line || 0,
       };
     }
 
@@ -2172,6 +2232,30 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         var contextText = buildCodeContext(blockId);
         if (contextText) {
           vscode.postMessage({ type: 'copyToClipboard', text: contextText });
+        }
+      }
+
+      /** Build source location reference string */
+      function buildSourceLocation(blockId) {
+        var data = blockData[blockId];
+        if (!data) return '';
+        var filePath = data.absoluteFilePath || data.file || '';
+        var startLine = data.startLine || 0;
+        var endLine = data.endLine || 0;
+        var lineRange = startLine ? (endLine && endLine !== startLine ? startLine + '-' + endLine : '' + startLine) : '';
+        return filePath + (lineRange ? ':' + lineRange : '');
+      }
+
+      /** Send code context with source location to Cursor AI composer */
+      function sendCodeToComposer(blockId) {
+        var contextText = buildCodeContext(blockId);
+        var sourceLocation = buildSourceLocation(blockId);
+        if (contextText) {
+          vscode.postMessage({
+            type: 'sendToComposer',
+            text: contextText,
+            sourceLocation: sourceLocation
+          });
         }
       }
 
