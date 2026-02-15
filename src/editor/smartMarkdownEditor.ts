@@ -649,7 +649,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       case 'boolean':
         return `
           <label class="wizard-checkbox">
-            <input type="checkbox" id="${inputId}" ${defaultVal ? 'checked' : ''} />
+            <input type="checkbox" id="${inputId}" ${defaultVal ? 'checked' : ''} onchange="this.nextElementSibling.textContent = this.checked ? 'true' : 'false'" />
             <span>${defaultVal ? 'true' : 'false'}</span>
           </label>`;
       case 'select': {
@@ -739,15 +739,42 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         newCode = luaCode.substring(0, closingBraceIdx) + entryIndent + codeToInsert + '\n' + luaCode.substring(closingBraceIdx);
       }
 
+      // Calculate the line number of the inserted code
+      let insertedLine: number;
+      if (needsComma) {
+        // Comma was appended to trimmedBefore, then newline + entry
+        insertedLine = trimmedBefore.split('\n').length + 1;
+      } else {
+        insertedLine = textBeforeBrace.split('\n').length;
+      }
+
       // Write file
       fs.writeFileSync(luaPath, newCode, 'utf-8');
 
       // Clear cache
       this.luaLinker.clearCache(luaPath);
 
-      vscode.window.showInformationMessage(
-        vscode.l10n.t('Successfully inserted new entry into {0}', message.target)
+      // Show success with "Jump to Code" option
+      const jumpAction = vscode.l10n.t('Jump to Code');
+      const userChoice = await vscode.window.showInformationMessage(
+        vscode.l10n.t('Successfully inserted new entry into {0}', message.target),
+        jumpAction
       );
+
+      if (userChoice === jumpAction) {
+        const fileUri = vscode.Uri.file(luaPath);
+        const existingColumn = this.findOpenEditorColumn(fileUri);
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        const editor = await vscode.window.showTextDocument(doc, {
+          viewColumn: existingColumn || vscode.ViewColumn.Beside,
+          preserveFocus: false
+        });
+        // Scroll to and highlight the inserted line
+        const targetLine = Math.max(0, insertedLine - 1);
+        const range = new vscode.Range(targetLine, 0, targetLine, doc.lineAt(targetLine).text.length);
+        editor.selection = new vscode.Selection(range.start, range.end);
+        editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+      }
     } catch (error) {
       vscode.window.showErrorMessage(
         vscode.l10n.t('Wizard execution failed: {0}', error instanceof Error ? error.message : String(error))
