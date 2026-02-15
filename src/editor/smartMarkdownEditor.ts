@@ -470,7 +470,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private renderMermaidBlock(code: string, index: number, mdDir: string): string {
     // Pre-process probe click directives
-    const probeClickMap: Record<string, { file: string; line: number }> = {};
+    const probeClickMap: Record<string, { file: string; line: number; target: string; fileName: string }> = {};
     const processedCode = this.processMermaidProbeClicks(code, index, mdDir, probeClickMap);
 
     const escapedCode = this.escapeHtml(processedCode)
@@ -505,7 +505,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     code: string,
     diagramIndex: number,
     mdDir: string,
-    clickMap: Record<string, { file: string; line: number }>
+    clickMap: Record<string, { file: string; line: number; target: string; fileName: string }>
   ): string {
     // Match click directives with probe:// URLs (quoted)
     const probeClickRegex = /click\s+(\S+)\s+"probe:\/\/([^#"]+)#([^"]+)"(?:\s+"[^"]*")?/g;
@@ -514,7 +514,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const resolved = this.probeScanner.resolveProbe(filePath, targetName, mdDir);
       if (resolved) {
         const escapedFile = resolved.filePath.replace(/\\/g, '\\\\');
-        clickMap[nodeId] = { file: escapedFile, line: resolved.line };
+        const fileName = path.basename(filePath);
+        clickMap[nodeId] = { file: escapedFile, line: resolved.line, target: targetName, fileName };
         // Replace with Mermaid callback reference (unique per diagram)
         return `click ${nodeId} mermaidProbe_${diagramIndex}`;
       }
