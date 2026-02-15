@@ -40,6 +40,7 @@ interface EditorInstance {
   languageCompartment: Compartment;
   themeCompartment: Compartment;
   onChangeCallback?: (code: string) => void;
+  onSaveCallback?: () => void;
 }
 
 // ============ Theme Configuration ============
@@ -289,7 +290,8 @@ function createEditor(
   container: HTMLElement,
   code: string,
   lang: string,
-  onChange?: (code: string) => void
+  onChange?: (code: string) => void,
+  onSave?: () => void
 ): EditorView {
   // Destroy existing instance
   destroyEditor(blockId);
@@ -305,6 +307,27 @@ function createEditor(
       onChange(update.state.doc.toString());
     }
   });
+
+  // Build keymaps — add Ctrl+S / Cmd+S save binding if onSave is provided
+  const keymaps = [
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+    indentWithTab,
+  ];
+
+  if (onSave) {
+    // Prepend save keymap so it takes priority
+    keymaps.unshift({
+      key: 'Mod-s',
+      run: () => {
+        onSave();
+        return true;  // Prevent default browser/webview behavior
+      },
+    });
+  }
 
   const state = EditorState.create({
     doc: code,
@@ -325,14 +348,7 @@ function createEditor(
       highlightActiveLine(),
       highlightSelectionMatches(),
       // Keymaps
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        indentWithTab,
-      ]),
+      keymap.of(keymaps),
       // Language support (in compartment for dynamic switching)
       languageCompartment.of(langExt),
       // Theme (in compartment)
@@ -356,6 +372,7 @@ function createEditor(
     languageCompartment,
     themeCompartment,
     onChangeCallback: onChange,
+    onSaveCallback: onSave,
   });
 
   return view;

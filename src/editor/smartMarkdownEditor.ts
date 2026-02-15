@@ -1879,12 +1879,22 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           const container = document.getElementById(blockId + '-cm');
           if (!container) return;
 
-          CodeEditor.create(blockId, container, data.originalCode, data.lang || 'lua', function(code) {
-            // 修改检测回调
-            const modified = code !== data.originalCode;
-            const hint = document.getElementById(blockId + '-modified');
-            if (hint) hint.style.display = modified ? 'flex' : 'none';
-          });
+          CodeEditor.create(
+            blockId,
+            container,
+            data.originalCode,
+            data.lang || 'lua',
+            function(code) {
+              // 修改检测回调
+              const modified = code !== data.originalCode;
+              const hint = document.getElementById(blockId + '-modified');
+              if (hint) hint.style.display = modified ? 'flex' : 'none';
+            },
+            function() {
+              // Ctrl+S / Cmd+S 保存回调
+              saveCode(blockId);
+            }
+          );
         });
       }
 
