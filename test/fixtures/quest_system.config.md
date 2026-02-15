@@ -35,6 +35,10 @@ flowchart TD
     J -->|No| L[Show Notification]
     K --> M[Quest Archived]
     L --> M
+
+    click H "probe://./quest_system.lua#QuestSystem.onQuestComplete"
+    click I "probe://./quest_system.lua#exp_calculation"
+    click J "probe://./quest_system.lua#rare_quest_logic"
 ```
 
 ## Quest Settings

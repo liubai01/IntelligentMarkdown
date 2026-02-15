@@ -430,6 +430,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       html = html.replace(block.rawText, placeholder);
     }
 
+    // Compute mdDir early (needed by mermaid probe clicks and probe links)
+    const mdDir = path.dirname(documentPath);
+
     // Step 1.5: Replace mermaid code blocks with placeholders
     let mermaidIndex = 0;
     const mermaidRegex = /```mermaid\s*\n([\s\S]*?)```/g;
@@ -438,7 +441,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const fullMatch = match[0];
       const mermaidCode = match[1].trim();
       const placeholder = `__MERMAID_BLOCK_PLACEHOLDER_${mermaidIndex}__`;
-      const mermaidHtml = this.renderMermaidBlock(mermaidCode, mermaidIndex);
+      const mermaidHtml = this.renderMermaidBlock(mermaidCode, mermaidIndex, mdDir);
       placeholders.set(placeholder, mermaidHtml);
       html = html.replace(fullMatch, placeholder);
       mermaidIndex++;
@@ -447,7 +450,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     }
 
     // Step 1.6: Resolve probe:// links to clickable HTML links
-    const mdDir = path.dirname(documentPath);
     html = this.resolveProbeLinks(html, mdDir);
 
     // Step 2: Markdown conversion
@@ -462,11 +464,22 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Render mermaid diagram block
+   * Render mermaid diagram block.
+   * Pre-processes `click NodeId "probe://path#target"` directives into
+   * Mermaid callback references so that clicking a node navigates to code.
    */
-  private renderMermaidBlock(code: string, index: number): string {
-    const escapedCode = this.escapeHtml(code)
+  private renderMermaidBlock(code: string, index: number, mdDir: string): string {
+    // Pre-process probe click directives
+    const probeClickMap: Record<string, { file: string; line: number }> = {};
+    const processedCode = this.processMermaidProbeClicks(code, index, mdDir, probeClickMap);
+
+    const escapedCode = this.escapeHtml(processedCode)
       .replace(/\n/g, '&#10;');
+
+    // Attach resolved probe click data as a JSON attribute
+    const probeDataAttr = Object.keys(probeClickMap).length > 0
+      ? ` data-probe-clicks="${this.escapeHtml(JSON.stringify(probeClickMap))}"`
+      : '';
 
     return `
 <div class="mermaid-block">
@@ -474,10 +487,40 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     <span class="mermaid-icon">📊</span>
     <span class="mermaid-label">Mermaid Diagram</span>
   </div>
-  <div class="mermaid-diagram" id="mermaid-${index}" data-mermaid-code="${escapedCode}">
+  <div class="mermaid-diagram" id="mermaid-${index}" data-mermaid-code="${escapedCode}"${probeDataAttr}>
     <div class="mermaid-loading">⏳ ${vscode.l10n.t('Rendering diagram...')}</div>
   </div>
 </div>`;
+  }
+
+  /**
+   * Process Mermaid code to extract `click NodeId "probe://path#target"` directives.
+   * Resolves each probe URL and replaces the click directive with a Mermaid callback.
+   *
+   * Supported syntaxes:
+   *   click NodeId "probe://./path.lua#target"
+   *   click NodeId "probe://./path.lua#target" "tooltip text"
+   */
+  private processMermaidProbeClicks(
+    code: string,
+    diagramIndex: number,
+    mdDir: string,
+    clickMap: Record<string, { file: string; line: number }>
+  ): string {
+    // Match click directives with probe:// URLs (quoted)
+    const probeClickRegex = /click\s+(\S+)\s+"probe:\/\/([^#"]+)#([^"]+)"(?:\s+"[^"]*")?/g;
+
+    return code.replace(probeClickRegex, (_match, nodeId, filePath, targetName) => {
+      const resolved = this.probeScanner.resolveProbe(filePath, targetName, mdDir);
+      if (resolved) {
+        const escapedFile = resolved.filePath.replace(/\\/g, '\\\\');
+        clickMap[nodeId] = { file: escapedFile, line: resolved.line };
+        // Replace with Mermaid callback reference (unique per diagram)
+        return `click ${nodeId} mermaidProbe_${diagramIndex}`;
+      }
+      // Unresolvable — remove the click directive to avoid Mermaid errors
+      return '';
+    });
   }
 
   /**
@@ -1910,6 +1953,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           line: line
         });
       }
+      // Expose gotoProbe globally for Mermaid probe click callbacks
+      window.gotoProbe = gotoProbe;
 
       function refresh() {
         vscode.postMessage({ type: 'refresh' });

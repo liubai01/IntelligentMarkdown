@@ -304,6 +304,38 @@ stateDiagram-v2
 ```
 ````
 
+### Clickable Nodes (Probe Navigation in Diagrams)
+
+You can make Mermaid nodes **clickable** so that clicking them jumps to a source code location. Use the `click` directive with a `probe://` URL:
+
+````markdown
+```mermaid
+flowchart TD
+    A[Accept Quest] --> B[Calculate Rewards]
+    B --> C[Grant EXP]
+    C --> D{Rare?}
+
+    click B "probe://./quest_system.lua#QuestSystem.onQuestComplete"
+    click C "probe://./quest_system.lua#exp_calculation"
+    click D "probe://./quest_system.lua#rare_quest_logic"
+```
+````
+
+**Syntax:**
+
+```
+click NodeId "probe://./path/to/file.lua#target_name"
+```
+
+| Part | Description |
+|------|-------------|
+| `NodeId` | The Mermaid node identifier (e.g. `B`, `C`, `myNode`) |
+| `probe://` | URL scheme (required) |
+| `./path.lua` | File path relative to the Markdown file |
+| `#target_name` | `@probe` marker, function path, or variable path |
+
+Clickable nodes appear with a **pointer cursor** in the rendered diagram. The same resolution order applies: `@probe` marker → function definition → variable path.
+
 > 💡 Mermaid blocks can be mixed freely with `lua-config` blocks, headings, and prose in the same Markdown file.
 
 ---
