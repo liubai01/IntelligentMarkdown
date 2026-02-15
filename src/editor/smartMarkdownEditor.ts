@@ -70,6 +70,16 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await vscode.env.clipboard.writeText(message.text || '');
             webviewPanel.webview.postMessage({ type: 'clipboardDone' });
             break;
+          case 'openChatAndPaste':
+            await vscode.env.clipboard.writeText(message.text || '');
+            // Try to open Cursor chat panel (Cursor-specific command, fails gracefully in vanilla VS Code)
+            try {
+              await vscode.commands.executeCommand('workbench.action.chat.open');
+            } catch {
+              // Silently ignore if command not available
+            }
+            webviewPanel.webview.postMessage({ type: 'clipboardDone' });
+            break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
             break;
@@ -547,7 +557,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         const escapedPath = target.filePath.replace(/\\/g, '\\\\');
         const relPath = path.relative(mdDir, target.filePath).replace(/\\/g, '/');
         const copyContext = `${relPath}:${target.line} (${probeLink.probeName})`;
-        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a><span class="drag-copy-handle" draggable="true" data-drag-text="${this.escapeHtml(copyContext)}" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${vscode.l10n.t('Drag or click to copy as AI context')}">⠿</span></span>`;
+        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a><span class="probe-copy-btn" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${vscode.l10n.t('Copy reference for AI (Ctrl+V to paste)')}">📋</span></span>`;
       } else {
         replacement = `<span class="probe-link-broken" title="${vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath)}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
       }
@@ -608,7 +618,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     return `
 <div class="config-block ${statusClass}" data-block-id="${blockId}" data-copy-context="${this.escapeHtml(copyContext)}">
   <div class="config-header">
-    <span class="drag-copy-handle" draggable="true" data-drag-text="" onclick="copyContext(this.closest('.config-block').getAttribute('data-copy-context'))" title="${vscode.l10n.t('Drag or click to copy as AI context')}">⠿</span>
+    <span class="copy-handle" onclick="copyContext(this.closest('.config-block').getAttribute('data-copy-context'))" title="${vscode.l10n.t('Copy as AI context (Ctrl+V to paste)')}">📋</span>
     <span class="status-icon">${statusIcon}</span>
     <span class="config-label">${label}</span>
     <span class="config-key" title="${block.key}">${block.key}</span>
@@ -824,10 +834,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     <button class="code-btn code-reset-btn" onclick="resetCode('${blockId}')" title="${t('Reset to original code')}">
       ↩️ ${t('Reset')}
     </button>
-    <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context')}">
-      📋 ${t('Copy')}
+    <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy code as AI context (Ctrl+V to paste)')}">
+      📋 ${t('Copy as Context')}
     </button>
-    <span class="code-drag-handle drag-copy-handle" draggable="true" data-drag-block="${blockId}" title="${t('Drag code as AI context')}">⠿</span>
+    <button class="code-btn code-ai-btn" onclick="sendCodeToChat('${blockId}')" title="${t('Copy and open AI chat panel')}">
+      🤖 ${t('Send to AI')}
+    </button>
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
   </div>
   <div class="code-cm-container" id="${blockId}-cm"></div>
@@ -1223,28 +1235,27 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(128, 128, 128, 0.15);
       }
 
-      /* ========== Drag + Copy handles ========== */
-      .drag-copy-handle {
+      /* ========== Copy-as-context handles ========== */
+      .copy-handle {
         background: transparent;
         border: none;
-        cursor: grab;
-        padding: 1px 3px;
+        cursor: pointer;
+        padding: 1px 4px;
         border-radius: 3px;
-        user-select: none;
-        -webkit-user-select: none;
-        opacity: 0.25;
-        font-size: 11px;
+        opacity: 0.35;
+        font-size: 12px;
         line-height: 1;
-        transition: opacity 0.15s, background 0.15s;
+        transition: opacity 0.15s, background 0.15s, transform 0.1s;
       }
 
-      .drag-copy-handle:hover {
-        opacity: 0.9;
-        background: rgba(128, 128, 128, 0.15);
+      .copy-handle:hover {
+        opacity: 1;
+        background: rgba(9, 105, 218, 0.12);
+        transform: scale(1.15);
       }
 
-      .drag-copy-handle:active {
-        cursor: grabbing;
+      .copy-handle:active {
+        transform: scale(0.95);
       }
 
       .probe-link-group {
@@ -1253,38 +1264,27 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         gap: 2px;
       }
 
-      .probe-link-group .drag-copy-handle {
-        font-size: 10px;
-        padding: 0 2px;
+      .probe-copy-btn {
+        cursor: pointer;
+        font-size: 11px;
+        padding: 0 3px;
         opacity: 0;
-        transition: opacity 0.15s;
+        transition: opacity 0.15s, transform 0.1s;
         vertical-align: middle;
         line-height: 1;
       }
 
-      .probe-link-group:hover .drag-copy-handle {
+      .probe-link-group:hover .probe-copy-btn {
         opacity: 0.5;
       }
 
-      .probe-link-group .drag-copy-handle:hover {
+      .probe-copy-btn:hover {
         opacity: 1 !important;
+        transform: scale(1.2);
       }
 
-      /* Drag handle in code toolbar */
-      .code-drag-handle {
-        font-size: 13px;
-        padding: 4px 6px;
-        margin-left: 2px;
-        border: 1px solid var(--input-border);
-        border-radius: 4px;
-        background: var(--color-canvas-subtle);
-        color: var(--color-fg-muted);
-      }
-
-      .code-drag-handle:hover {
-        border-color: var(--color-accent);
-        background: rgba(9, 105, 218, 0.08);
-        color: var(--color-accent);
+      .probe-copy-btn:active {
+        transform: scale(0.9);
       }
 
       .config-input {
@@ -1688,6 +1688,17 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background: rgba(9, 105, 218, 0.08);
       }
 
+      .code-ai-btn {
+        background: rgba(139, 92, 246, 0.08);
+        color: var(--color-fg-default);
+        border-color: rgba(139, 92, 246, 0.3);
+      }
+
+      .code-ai-btn:hover {
+        border-color: rgba(139, 92, 246, 0.7);
+        background: rgba(139, 92, 246, 0.15);
+      }
+
       /* CodeMirror 容器 */
       .code-cm-container {
         width: 100%;
@@ -1819,24 +1830,42 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       /* ========== Copy toast ========== */
       .copy-toast {
         position: fixed;
-        bottom: 20px;
+        bottom: 24px;
         left: 50%;
         transform: translateX(-50%) translateY(10px);
         background: var(--color-fg-default);
         color: var(--color-canvas-default);
-        padding: 8px 16px;
-        border-radius: 6px;
+        padding: 10px 20px;
+        border-radius: 8px;
         font-size: 13px;
         opacity: 0;
         transition: opacity 0.3s, transform 0.3s;
         z-index: 9999;
         pointer-events: none;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .copy-toast.show {
         opacity: 1;
         transform: translateX(-50%) translateY(0);
+      }
+
+      .copy-toast .toast-hint {
+        font-size: 11px;
+        opacity: 0.7;
+        border-left: 1px solid rgba(128,128,128,0.3);
+        padding-left: 8px;
+      }
+
+      .copy-toast kbd {
+        background: rgba(128,128,128,0.2);
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 11px;
+        font-family: ui-monospace, monospace;
       }
     `;
   }
@@ -2063,7 +2092,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         MermaidRenderer.renderAll();
       }
 
-      /* ========== Drag + Copy for AI Context ========== */
+      /* ========== Copy & Send to AI Context ========== */
 
       /** Copy text to clipboard via extension (reliable in webview) */
       function copyContext(text) {
@@ -2093,68 +2122,51 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
-      /** Show a brief toast notification */
+      /** Copy code and open AI chat panel */
+      function sendCodeToChat(blockId) {
+        var contextText = buildCodeContext(blockId);
+        if (contextText) {
+          vscode.postMessage({ type: 'openChatAndPaste', text: contextText });
+        }
+      }
+
+      /** Copy text and open AI chat panel */
+      function sendToChat(text) {
+        if (!text) return;
+        vscode.postMessage({ type: 'openChatAndPaste', text: text });
+      }
+
+      /** Show a toast notification with paste hint */
       function showCopyToast(message) {
+        // Remove any existing toast
+        var old = document.querySelector('.copy-toast');
+        if (old) old.remove();
+
         var toast = document.createElement('div');
         toast.className = 'copy-toast';
-        toast.textContent = '✅ ' + message;
+
+        var main = document.createElement('span');
+        main.textContent = '✅ ' + message;
+        toast.appendChild(main);
+
+        var hint = document.createElement('span');
+        hint.className = 'toast-hint';
+        hint.innerHTML = '<kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴到聊天框';
+        toast.appendChild(hint);
+
         document.body.appendChild(toast);
         requestAnimationFrame(function() { toast.classList.add('show'); });
         setTimeout(function() {
           toast.classList.remove('show');
           setTimeout(function() { toast.remove(); }, 300);
-        }, 1500);
+        }, 2500);
       }
-
-      /**
-       * Native drag-and-drop: use <span draggable="true"> (NOT <a>)
-       * to avoid the webview sandbox injecting about:blank#blocked URLs.
-       * Also copy to clipboard as a fallback.
-       */
-      document.addEventListener('dragstart', function(e) {
-        var handle = e.target.closest ? e.target.closest('.drag-copy-handle') : null;
-        if (!handle) return;
-
-        // Determine drag text
-        var text = handle.getAttribute('data-drag-text') || '';
-
-        // For code blocks, build the context dynamically
-        var dragBlock = handle.getAttribute('data-drag-block');
-        if (dragBlock) {
-          text = buildCodeContext(dragBlock);
-        }
-
-        // For config blocks, read from parent's data attribute
-        if (!text) {
-          var configBlock = handle.closest('.config-block');
-          if (configBlock) {
-            text = configBlock.getAttribute('data-copy-context') || '';
-          }
-        }
-
-        if (!text) return;
-
-        // Set plain text data — the key fix: <span> has no href, no about:blank leak
-        e.dataTransfer.setData('text/plain', text);
-        e.dataTransfer.effectAllowed = 'copy';
-
-        // Also copy to clipboard as fallback (in case drop target ignores drag data)
-        vscode.postMessage({ type: 'copyToClipboard', text: text });
-
-        // Visual feedback: create a ghost drag image
-        var ghost = document.createElement('div');
-        ghost.textContent = '📎 ' + (text.length > 40 ? text.substring(0, 40) + '...' : text);
-        ghost.style.cssText = 'position:fixed;top:-999px;left:-999px;padding:4px 8px;background:var(--color-fg-default);color:var(--color-canvas-default);border-radius:4px;font-size:12px;white-space:nowrap;max-width:300px;overflow:hidden;pointer-events:none;z-index:99999;';
-        document.body.appendChild(ghost);
-        e.dataTransfer.setDragImage(ghost, 0, 0);
-        setTimeout(function() { ghost.remove(); }, 0);
-      });
 
       /** Listen for clipboard done confirmation from extension */
       window.addEventListener('message', function(event) {
         var msg = event.data;
         if (msg && msg.type === 'clipboardDone') {
-          showCopyToast('Copied ✓');
+          showCopyToast('已复制');
         }
       });
 
