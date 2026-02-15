@@ -2,6 +2,12 @@
 
 Welcome to the config.md extension documentation!
 
+## For Users
+
+### Features
+
+- **[Lua Wizard Guide](./WIZARD.md)** - Multi-step code generation wizard (`lua-wizard` block syntax)
+
 ## For Developers
 
 ### Release & Publishing
@@ -29,6 +35,7 @@ git push origin vX.Y.Z
 
 | File | Purpose | Audience |
 |------|---------|----------|
+| [WIZARD.md](./WIZARD.md) | Lua Wizard multi-step code generator | Users, Designers |
 | [QUICK_RELEASE.md](./QUICK_RELEASE.md) | Fast reference for releases | Developers, AI Assistants |
 | [RELEASE.md](./RELEASE.md) | Complete release standards | Developers, Maintainers |
 | [SETUP_GITHUB_ACTIONS.md](./SETUP_GITHUB_ACTIONS.md) | GitHub Actions configuration | Repository Admins |

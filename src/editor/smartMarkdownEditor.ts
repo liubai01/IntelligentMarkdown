@@ -679,7 +679,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         return;
       }
 
-      let luaCode = fs.readFileSync(luaPath, 'utf-8');
+      const luaCode = fs.readFileSync(luaPath, 'utf-8');
 
       // Parse the Lua file to find the target table
       const parser = new LuaParser(luaCode);
@@ -2199,7 +2199,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       /* ========== Wizard Block ========== */
       .wizard-block {
-        border: 2px solid var(--color-accent);
+        border: 2px solid var(--vscode-button-background, var(--color-accent));
         border-radius: 10px;
         margin: 16px 0;
         overflow: hidden;
@@ -2211,8 +2211,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         align-items: center;
         gap: 10px;
         padding: 12px 16px;
-        background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, transparent));
-        color: var(--button-fg, #fff);
+        background: var(--vscode-button-background, var(--color-accent));
+        color: var(--vscode-button-foreground, #fff);
         font-weight: 600;
         font-size: 15px;
       }
@@ -2223,10 +2223,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       .wizard-target {
         font-size: 11px;
-        opacity: 0.8;
+        opacity: 0.85;
         font-weight: 400;
         font-family: ui-monospace, monospace;
-        background: rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.18);
         padding: 2px 8px;
         border-radius: 4px;
       }
@@ -2239,6 +2239,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         gap: 0;
         padding: 12px 16px;
         border-bottom: 1px solid var(--color-border-muted);
+        background: var(--color-canvas-default);
       }
 
       .wizard-progress-dot {
@@ -2250,7 +2251,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         justify-content: center;
         font-size: 12px;
         font-weight: 600;
-        background: var(--color-canvas-subtle);
+        background: var(--color-canvas-default);
         border: 2px solid var(--color-border-default);
         color: var(--color-fg-muted);
         transition: all 0.3s;
@@ -2258,15 +2259,15 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       .wizard-progress-dot.active {
-        background: var(--color-accent);
-        border-color: var(--color-accent);
-        color: var(--button-fg, #fff);
+        background: var(--vscode-button-background, var(--color-accent));
+        border-color: var(--vscode-button-background, var(--color-accent));
+        color: var(--vscode-button-foreground, #fff);
         transform: scale(1.1);
       }
 
       .wizard-progress-dot.done {
-        background: var(--color-success);
-        border-color: var(--color-success);
+        background: var(--vscode-testing-iconPassed, #2ea043);
+        border-color: var(--vscode-testing-iconPassed, #2ea043);
         color: #fff;
       }
 
@@ -2278,7 +2279,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       .wizard-progress-line.done {
-        background: var(--color-success);
+        background: var(--vscode-testing-iconPassed, #2ea043);
       }
 
       /* Wizard body */
@@ -2303,8 +2304,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       .wizard-step-badge {
-        background: var(--color-accent);
-        color: var(--button-fg, #fff);
+        background: var(--vscode-badge-background, var(--color-accent));
+        color: var(--vscode-badge-foreground, #fff);
         padding: 2px 10px;
         border-radius: 12px;
         font-size: 11px;
@@ -2315,6 +2316,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       .wizard-step-title {
         font-size: 16px;
         font-weight: 600;
+        color: var(--color-fg-default);
       }
 
       .wizard-step-desc {
@@ -2342,8 +2344,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       .wizard-input:focus {
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+        border-color: var(--vscode-focusBorder, var(--color-accent));
+        box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder, 9, 105, 218), 0.25);
       }
 
       .wizard-checkbox {
@@ -2353,12 +2355,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         cursor: pointer;
         font-size: 14px;
         padding: 8px 0;
+        color: var(--color-fg-default);
       }
 
       .wizard-checkbox input[type="checkbox"] {
         width: 18px;
         height: 18px;
-        accent-color: var(--color-accent);
+        accent-color: var(--vscode-button-background, var(--color-accent));
         cursor: pointer;
       }
 
@@ -2387,18 +2390,18 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       .wizard-btn:active { transform: translateY(0); }
 
       .wizard-btn-primary {
-        background: var(--color-accent);
-        color: var(--button-fg, #fff);
+        background: var(--vscode-button-background, var(--color-accent));
+        color: var(--vscode-button-foreground, #fff);
       }
 
       .wizard-btn-secondary {
-        background: var(--color-canvas-subtle);
+        background: var(--color-canvas-default);
         color: var(--color-fg-default);
         border: 1px solid var(--color-border-default);
       }
 
       .wizard-btn-success {
-        background: var(--color-success);
+        background: var(--vscode-testing-iconPassed, #2ea043);
         color: #fff;
       }
 
@@ -2436,8 +2439,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       @keyframes wizardSuccessPulse {
-        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 40%, transparent); }
-        50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-success) 0%, transparent); }
+        0% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(46, 160, 67, 0); }
         100% { box-shadow: none; }
       }
     `;
