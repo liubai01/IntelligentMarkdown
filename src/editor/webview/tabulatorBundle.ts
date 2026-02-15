@@ -5,7 +5,8 @@
  * Provides enhanced table controls with filtering, sorting, and inline editing.
  */
 
-import { TabulatorFull as Tabulator } from 'tabulator-tables';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Tabulator = require('tabulator-tables');
 
 // ============ Types ============
 
@@ -30,7 +31,7 @@ interface TableCallbacks {
 // ============ State ============
 
 /** Active Tabulator instances, keyed by container ID */
-const instances: Map<string, Tabulator> = new Map();
+const instances: Map<string, any> = new Map();
 
 // ============ Public API ============
 
@@ -162,7 +163,7 @@ function create(
   // Inject a hidden __rowIndex field to track original row position
   const indexedData = data.map((row, i) => ({ ...row, __rowIndex: i }));
 
-  // Create Tabulator
+  // Create Tabulator instance
   const table = new Tabulator(container, {
     data: indexedData,
     columns: tabulatorColumns,
