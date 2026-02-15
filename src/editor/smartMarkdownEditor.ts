@@ -513,9 +513,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     return code.replace(probeClickRegex, (_match, nodeId, filePath, targetName) => {
       const resolved = this.probeScanner.resolveProbe(filePath, targetName, mdDir);
       if (resolved) {
-        const escapedFile = resolved.filePath.replace(/\\/g, '\\\\');
         const fileName = path.basename(filePath);
-        clickMap[nodeId] = { file: escapedFile, line: resolved.line, target: targetName, fileName };
+        // Use raw filePath — JSON.stringify/parse handles backslash escaping automatically.
+        // Do NOT double-escape here, otherwise findOpenEditorColumn path comparison fails.
+        clickMap[nodeId] = { file: resolved.filePath, line: resolved.line, target: targetName, fileName };
         // Replace with Mermaid callback reference (unique per diagram)
         return `click ${nodeId} mermaidProbe_${diagramIndex}`;
       }
