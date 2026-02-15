@@ -82,8 +82,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await this.handleAddFileToChat(message);
             break;
           case 'executeWizard':
-            await this.handleExecuteWizard(document, message);
-            await this.updateWebview(document, webviewPanel.webview);
+            await this.handleExecuteWizard(document, message, webviewPanel.webview);
+            // Only refresh webview for 'append' action (which modifies files)
+            if (message.action !== 'run') {
+              await this.updateWebview(document, webviewPanel.webview);
+            }
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
@@ -759,12 +762,13 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleExecuteWizard(
     document: vscode.TextDocument,
-    message: { file: string; target: string; action: string; generatedCode: string; commands?: string; cwd?: string }
+    message: { file: string; target: string; action: string; generatedCode: string; commands?: string; cwd?: string; wizardId?: string },
+    webview: vscode.Webview
   ): Promise<void> {
     if (message.action === 'run') {
-      await this.handleExecuteWizardRun(document, message);
+      await this.handleExecuteWizardRun(document, message, webview);
     } else {
-      await this.handleExecuteWizardAppend(document, message);
+      await this.handleExecuteWizardAppend(document, message, webview);
     }
   }
 
@@ -773,14 +777,18 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleExecuteWizardAppend(
     document: vscode.TextDocument,
-    message: { file: string; target: string; action: string; generatedCode: string }
+    message: { file: string; target: string; action: string; generatedCode: string; wizardId?: string },
+    webview: vscode.Webview
   ): Promise<void> {
+    const wizardId = message.wizardId || '';
     try {
       const mdDir = path.dirname(document.uri.fsPath);
       const luaPath = this.pathResolver.resolve(mdDir, message.file);
 
       if (!fs.existsSync(luaPath)) {
-        vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', luaPath));
+        const errMsg = vscode.l10n.t('File not found: {0}', luaPath);
+        vscode.window.showErrorMessage(errMsg);
+        webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
         return;
       }
 
@@ -791,13 +799,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const result = parser.findNodeByPath(message.target);
 
       if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(vscode.l10n.t('Target not found: {0}', message.target));
+        const errMsg = vscode.l10n.t('Target not found: {0}', message.target);
+        vscode.window.showErrorMessage(errMsg);
+        webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
         return;
       }
 
       // The target should be a table
       if (result.node.type !== 'table') {
-        vscode.window.showErrorMessage(vscode.l10n.t('Target is not a table: {0}', message.target));
+        const errMsg = vscode.l10n.t('Target is not a table: {0}', message.target);
+        vscode.window.showErrorMessage(errMsg);
+        webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
         return;
       }
 
@@ -807,7 +819,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const closingBraceIdx = beforeTable.lastIndexOf('}');
 
       if (closingBraceIdx === -1) {
-        vscode.window.showErrorMessage(vscode.l10n.t('Cannot find insertion point in table'));
+        const errMsg = vscode.l10n.t('Cannot find insertion point in table');
+        vscode.window.showErrorMessage(errMsg);
+        webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
         return;
       }
 
@@ -848,6 +862,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       fs.writeFileSync(luaPath, newCode, 'utf-8');
       this.luaLinker.clearCache(luaPath);
 
+      // Send success result back to webview
+      webview.postMessage({
+        type: 'wizardResult',
+        wizardId,
+        success: true,
+        message: vscode.l10n.t('Successfully inserted new entry into {0}', message.target)
+      });
+
       // Show success with "Jump to Code" option
       const jumpAction = vscode.l10n.t('Jump to Code');
       const userChoice = await vscode.window.showInformationMessage(
@@ -869,9 +891,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
       }
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(
-        vscode.l10n.t('Wizard execution failed: {0}', error instanceof Error ? error.message : String(error))
+        vscode.l10n.t('Wizard execution failed: {0}', errMsg)
       );
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
     }
   }
 
@@ -880,11 +904,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleExecuteWizardRun(
     document: vscode.TextDocument,
-    message: { commands?: string; cwd?: string }
+    message: { commands?: string; cwd?: string; wizardId?: string },
+    webview: vscode.Webview
   ): Promise<void> {
+    const wizardId = message.wizardId || '';
     const commandsStr = (message.commands || '').trim();
     if (!commandsStr) {
       vscode.window.showErrorMessage(vscode.l10n.t('No commands to execute'));
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: 'No commands to execute' });
       return;
     }
 
@@ -896,6 +923,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
     if (commands.length === 0) {
       vscode.window.showErrorMessage(vscode.l10n.t('No commands to execute'));
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: 'No commands to execute' });
       return;
     }
 
@@ -912,7 +940,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       vscode.l10n.t('Execute')
     );
 
-    if (!confirm) return;
+    if (!confirm) {
+      // User cancelled — just restore wizard to preview state
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: 'Cancelled by user' });
+      return;
+    }
 
     // Create output channel for logging
     const outputChannel = vscode.window.createOutputChannel('Wizard Commands');
@@ -931,6 +963,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       },
       async (progress) => {
         let allSuccess = true;
+        let failMessage = '';
 
         for (let i = 0; i < commands.length; i++) {
           const cmd = commands[i];
@@ -942,7 +975,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           outputChannel.appendLine(`$ ${cmd}`);
 
           try {
-            const result = await new Promise<string>((resolve, reject) => {
+            await new Promise<string>((resolve, reject) => {
               exec(cmd, { cwd, timeout: 60000, encoding: 'utf-8' }, (err: any, stdout: string, stderr: string) => {
                 if (stdout) outputChannel.appendLine(stdout.trimEnd());
                 if (stderr) outputChannel.appendLine(stderr.trimEnd());
@@ -957,20 +990,28 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           } catch (error) {
             allSuccess = false;
             const errMsg = error instanceof Error ? error.message : String(error);
+            failMessage = errMsg;
             outputChannel.appendLine(`❌ ERROR: ${errMsg}`);
             outputChannel.appendLine('');
-            vscode.window.showErrorMessage(
-              vscode.l10n.t('Command failed: {0}', errMsg)
-            );
             break; // Stop on first failure
           }
         }
 
         if (allSuccess) {
           outputChannel.appendLine(`✅ ${vscode.l10n.t('All commands completed successfully')}`);
-          vscode.window.showInformationMessage(
-            vscode.l10n.t('All {0} commands completed successfully!', commands.length)
-          );
+          webview.postMessage({
+            type: 'wizardResult',
+            wizardId,
+            success: true,
+            message: vscode.l10n.t('All {0} commands completed successfully!', commands.length)
+          });
+        } else {
+          webview.postMessage({
+            type: 'wizardResult',
+            wizardId,
+            success: false,
+            message: failMessage
+          });
         }
       }
     );
@@ -2682,15 +2723,55 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         white-space: pre;
       }
 
-      /* Success animation */
-      .wizard-block.wizard-success {
-        animation: wizardSuccessPulse 0.5s ease;
+      /* Wizard result states */
+      .wizard-result {
+        display: none;
+        text-align: center;
+        padding: 24px 16px;
       }
-
-      @keyframes wizardSuccessPulse {
-        0% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.4); }
-        50% { box-shadow: 0 0 0 8px rgba(46, 160, 67, 0); }
-        100% { box-shadow: none; }
+      .wizard-result-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+      }
+      .wizard-result-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--color-fg-default);
+      }
+      .wizard-result-detail {
+        font-size: 13px;
+        color: var(--color-fg-muted);
+        margin-bottom: 16px;
+        word-break: break-word;
+        max-height: 120px;
+        overflow-y: auto;
+        padding: 8px;
+        background: rgba(128, 128, 128, 0.1);
+        border-radius: 6px;
+        text-align: left;
+        font-family: var(--vscode-editor-font-family), monospace;
+        white-space: pre-wrap;
+      }
+      .wizard-result-actions {
+        margin-top: 16px;
+      }
+      .wizard-result-executing .wizard-result-icon {
+        animation: wizardSpin 1.5s linear infinite;
+      }
+      .wizard-result-success .wizard-result-title {
+        color: var(--vscode-testing-iconPassed, #2ea043);
+      }
+      .wizard-result-error .wizard-result-title {
+        color: var(--vscode-errorForeground, #f85149);
+      }
+      .wizard-result-error .wizard-result-detail {
+        background: rgba(248, 81, 73, 0.1);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+      }
+      @keyframes wizardSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
     `;
   }
@@ -3035,6 +3116,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (msg && msg.type === 'scrollToSection') {
           scrollToSection(msg.sectionId);
         }
+        if (msg && msg.type === 'wizardResult') {
+          wizardShowResult(msg.wizardId, msg.success, msg.message || '');
+        }
       });
 
       /** Scroll to a section by its id and highlight it */
@@ -3218,7 +3302,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           file: data.file || '',
           target: data.target || '',
           action: data.action || 'append',
-          generatedCode: generated
+          generatedCode: generated,
+          wizardId: wizardId
         };
 
         // For 'run' action, also pass the resolved commands and cwd
@@ -3229,9 +3314,96 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
         vscode.postMessage(msg);
 
-        // Success animation
-        wizardEl.classList.add('wizard-success');
-        setTimeout(function() { wizardEl.classList.remove('wizard-success'); }, 500);
+        // Show executing state
+        wizardShowExecuting(wizardId);
+      }
+
+      /** Show executing/loading state in the wizard */
+      function wizardShowExecuting(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        // Hide preview
+        var previewEl = document.getElementById(wizardId + '-preview');
+        if (previewEl) previewEl.style.display = 'none';
+        // Show or create result area
+        var resultEl = document.getElementById(wizardId + '-result');
+        if (!resultEl) {
+          resultEl = document.createElement('div');
+          resultEl.id = wizardId + '-result';
+          resultEl.className = 'wizard-result';
+          var body = wizardEl.querySelector('.wizard-body');
+          if (body) body.appendChild(resultEl);
+        }
+        resultEl.className = 'wizard-result wizard-result-executing';
+        resultEl.innerHTML = '<div class="wizard-result-icon">⏳</div>'
+          + '<div class="wizard-result-title">Executing...</div>'
+          + '<div class="wizard-result-detail">Please wait while commands are being processed.</div>';
+        resultEl.style.display = 'block';
+        // Mark all progress dots as done
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var steps = data.steps || [];
+        steps.forEach(function(_, i) {
+          var dot = document.getElementById(wizardId + '-dot-' + i);
+          if (dot) { dot.classList.remove('active'); dot.classList.add('done'); }
+        });
+        var lines = wizardEl.querySelectorAll('.wizard-progress-line');
+        lines.forEach(function(line) { line.classList.add('done'); });
+      }
+
+      /** Show wizard execution result */
+      function wizardShowResult(wizardId, success, message) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var resultEl = document.getElementById(wizardId + '-result');
+        if (!resultEl) {
+          resultEl = document.createElement('div');
+          resultEl.id = wizardId + '-result';
+          resultEl.className = 'wizard-result';
+          var body = wizardEl.querySelector('.wizard-body');
+          if (body) body.appendChild(resultEl);
+        }
+
+        if (success) {
+          resultEl.className = 'wizard-result wizard-result-success';
+          resultEl.innerHTML = '<div class="wizard-result-icon">✅</div>'
+            + '<div class="wizard-result-title">Completed Successfully</div>'
+            + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
+            + '<div class="wizard-result-actions">'
+            + '<button class="wizard-btn wizard-btn-secondary" onclick="wizardRestart(\'' + wizardId + '\')">🔄 Restart Wizard</button>'
+            + '</div>';
+        } else {
+          resultEl.className = 'wizard-result wizard-result-error';
+          resultEl.innerHTML = '<div class="wizard-result-icon">❌</div>'
+            + '<div class="wizard-result-title">Execution Failed</div>'
+            + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
+            + '<div class="wizard-result-actions">'
+            + '<button class="wizard-btn wizard-btn-primary" onclick="wizardRestart(\'' + wizardId + '\')">🔄 Restart Wizard</button>'
+            + '</div>';
+        }
+        resultEl.style.display = 'block';
+      }
+
+      /** Restart wizard — reset to initial state */
+      function wizardRestart(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        // Hide result area
+        var resultEl = document.getElementById(wizardId + '-result');
+        if (resultEl) resultEl.style.display = 'none';
+        // Hide preview
+        var previewEl = document.getElementById(wizardId + '-preview');
+        if (previewEl) previewEl.style.display = 'none';
+        // Show first step
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        var steps = data.steps || [];
+        steps.forEach(function(_, i) {
+          var stepEl = document.getElementById(wizardId + '-step-' + i);
+          if (stepEl) stepEl.style.display = i === 0 ? 'block' : 'none';
+        });
+        // Reset progress
+        wizardUpdateProgress(wizardId, 0);
       }
     `;
   }
