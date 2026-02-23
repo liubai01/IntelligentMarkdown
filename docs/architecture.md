@@ -1,6 +1,6 @@
 # Architecture
 
-`IntelligentMarkdown` is a VS Code extension that turns Markdown into an interactive Lua configuration surface.  
+`IntelligentMarkdown` is a VS Code extension that turns Markdown into an interactive configuration surface.  
 Users define structured blocks in Markdown, and the extension handles parsing, rendering, write-back, and source navigation.
 
 ## Architecture Overview
@@ -16,7 +16,7 @@ Markdown document
 Extension Host
   |- Parsing: ConfigBlockParser / WizardBlockParser
   |- Linking: LuaLinker / ProbeScanner / PathResolver
-  |- Write-back: LuaPatcher + LuaParser(AST)
+  |- Write-back: LuaPatcher/LuaParser + JsonPatcher/JsonParser
   |- Editor: SmartMarkdownEditorProvider(Webview)
   '- Providers/Commands: links, hover, decorations, commands
         | postMessage
@@ -52,8 +52,12 @@ Webview UI
   - Resolves Markdown blocks to Lua AST nodes and current values
 - `src/core/parser/luaParser.ts`
   - Provides AST path lookup and function/node resolution via `luaparse`
+- `src/core/parser/jsonParser.ts`
+  - Provides JSON path lookup and location metadata (`line/column/range`)
 - `src/core/patcher/luaPatcher.ts`
   - Applies targeted range-based replacement to preserve source formatting
+- `src/core/patcher/jsonPatcher.ts`
+  - Applies path-based JSON edits via `jsonc-parser`
 - `src/core/probeScanner.ts`
   - Parses and caches probe markers for `probe://` links and Mermaid click navigation
 
@@ -82,6 +86,8 @@ Webview UI
 - Key behavior:
   - `table` and `code` blocks are lazily initialized
   - Value updates write back to Lua and clear relevant caches
+  - JSON files (`.json`, `.jsonc`) are supported for phase-1 value binding/editing
+  - JSON `table` and `code` types are reserved for later phases
 
 ### lua-wizard
 
@@ -97,6 +103,7 @@ Webview UI
   - `@probe` comment markers
   - function path resolution
   - variable/table path resolution
+  - JSON path resolution (`A.B[1].C`) when target file is JSON/JSONC
 
 ## Key Data Flows
 

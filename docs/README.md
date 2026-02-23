@@ -14,6 +14,11 @@ This index helps you navigate the up-to-date docs for `IntelligentMarkdown`.
 - [Lua Wizard Guide](./wizard.md): `lua-wizard` workflows for `append` and `run`.
 - [User Guide](./user-guide.md): first project setup and common usage patterns.
 
+### Current Implementation Notes
+
+- JSON phase 1 is available: value binding, probe navigation, and basic value write-back.
+- JSON table editing (`type: table`) is tracked as phase 2.
+
 ## Development Docs
 
 - [Architecture](./architecture.md): extension entrypoints, core modules, messaging, and caching behavior.

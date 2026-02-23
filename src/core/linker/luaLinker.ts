@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ParsedConfigBlock } from '../../types';
 import { LuaParser } from '../parser/luaParser';
+import { JsonParser } from '../parser/jsonParser';
 import { PathResolver } from './pathResolver';
 
 export interface LinkedConfigBlock extends ParsedConfigBlock {
@@ -36,7 +37,12 @@ export interface LinkedConfigBlock extends ParsedConfigBlock {
 
 export class LuaLinker {
   private pathResolver: PathResolver;
-  private luaFileCache: Map<string, { content: string; parser: LuaParser; mtime: number }>;
+  private luaFileCache: Map<string, {
+    content: string;
+    parser: LuaParser | JsonParser;
+    mtime: number;
+    format: 'lua' | 'json';
+  }>;
 
   constructor() {
     this.pathResolver = new PathResolver();
@@ -64,8 +70,9 @@ export class LuaLinker {
    * Link a single config block
    */
   private async linkSingleBlock(block: ParsedConfigBlock, baseDir: string): Promise<LinkedConfigBlock> {
-    // Resolve Lua file path
+    // Resolve source file path
     const absolutePath = this.pathResolver.resolve(baseDir, block.file);
+    const isJsonFile = /\.(json|jsonc)$/i.test(absolutePath);
 
     // Create base linked block
     const linkedBlock: LinkedConfigBlock = {
@@ -83,12 +90,20 @@ export class LuaLinker {
     }
 
     try {
+      // Phase 1 JSON support: basic controls + navigation only
+      if (isJsonFile && (block.type === 'table' || block.type === 'code')) {
+        linkedBlock.linkStatus = 'parse-error';
+        linkedBlock.linkError = vscode.l10n.t('Type "{0}" is not supported for JSON in phase 1', block.type);
+        return linkedBlock;
+      }
+
       // Get or create parser
-      const parser = await this.getParser(absolutePath);
+      const parserInfo = await this.getParser(absolutePath);
+      const parser = parserInfo.parser;
 
       // Choose find method based on type
-      const result = block.type === 'code'
-        ? parser.findFunctionByFullPath(block.key)
+      const result = !isJsonFile && block.type === 'code'
+        ? (parser as LuaParser).findFunctionByFullPath(block.key)
         : parser.findNodeByPath(block.key);
 
       if (!result.success || !result.node) {
@@ -107,9 +122,10 @@ export class LuaLinker {
         loc: result.node.loc
       };
 
-      // For table type, extract detailed table array data (needs raw AST node)
-      if (block.type === 'table' && result.astNode && result.astNode.type === 'TableConstructorExpression') {
-        const tableData = parser.extractTableArray(result.astNode);
+      // For Lua table type, extract detailed table array data (needs raw AST node)
+      if (!isJsonFile && block.type === 'table' && result.astNode && result.astNode.type === 'TableConstructorExpression') {
+        const luaParser = parser as LuaParser;
+        const tableData = luaParser.extractTableArray(result.astNode);
         if (tableData) {
           linkedBlock.luaNode.tableData = tableData;
         }
@@ -128,24 +144,30 @@ export class LuaLinker {
   /**
    * Get Lua file parser (with cache)
    */
-  private async getParser(filePath: string): Promise<LuaParser> {
+  private async getParser(filePath: string): Promise<{
+    parser: LuaParser | JsonParser;
+    format: 'lua' | 'json';
+  }> {
     const stats = fs.statSync(filePath);
     const mtime = stats.mtimeMs;
+    const format: 'lua' | 'json' = /\.(json|jsonc)$/i.test(filePath) ? 'json' : 'lua';
 
     // Check cache
     const cached = this.luaFileCache.get(filePath);
-    if (cached && cached.mtime === mtime) {
-      return cached.parser;
+    if (cached && cached.mtime === mtime && cached.format === format) {
+      return { parser: cached.parser, format: cached.format };
     }
 
     // Read and parse file
     const content = fs.readFileSync(filePath, 'utf-8');
-    const parser = new LuaParser(content);
+    const parser = format === 'json'
+      ? new JsonParser(content)
+      : new LuaParser(content);
 
     // Update cache
-    this.luaFileCache.set(filePath, { content, parser, mtime });
+    this.luaFileCache.set(filePath, { content, parser, mtime, format });
 
-    return parser;
+    return { parser, format };
   }
 
   /**

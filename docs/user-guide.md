@@ -1,6 +1,6 @@
 # User Guide
 
-This guide is for everyday users who want to edit Lua configuration through Markdown.  
+This guide is for everyday users who want to edit Lua or JSON configuration through Markdown.  
 For full field-level syntax details, see [lua-config Reference](./lua-config-reference.md).
 
 ## Who This Is For
@@ -65,6 +65,24 @@ label: Enable Sound
 - Click the preview icon in the editor title bar
 - Or run `Open Config Preview` from the Command Palette
 
+### JSON quick start (phase 1)
+
+You can also bind to `.json` / `.jsonc` files using the same `lua-config` block syntax:
+
+````markdown
+```lua-config
+file: ./game_json_config.json
+key: GameConfig.Player.MaxHealth
+type: number
+min: 1
+max: 9999
+label: Player Max Health
+```
+````
+
+> Current JSON support in phase 1 includes basic value bindings and probe navigation.
+> JSON table editing (`type: table`) is part of phase 2.
+
 ## Common Capabilities
 
 ### Visual editing and sync
@@ -75,7 +93,7 @@ label: Enable Sound
 ### Source navigation
 
 - Jump from preview cards to Lua source locations
-- Use `probe://` links to jump to markers, functions, or variable paths
+- Use `probe://` links to jump to markers, functions, variable paths, or JSON paths
 
 ### Multi-step wizard
 

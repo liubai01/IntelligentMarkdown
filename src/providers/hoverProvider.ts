@@ -1,6 +1,6 @@
 /**
  * Hover provider
- * Shows current Lua variable value on hover over lua-config code blocks in Markdown
+ * Shows current source variable value on hover over lua-config code blocks in Markdown
  */
 
 import * as vscode from 'vscode';
@@ -50,7 +50,7 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
     contents.isTrusted = true;
 
     // Title
-    contents.appendMarkdown(`### 🔗 ${vscode.l10n.t('Lua Config Binding')}\n\n`);
+    contents.appendMarkdown(`### 🔗 ${vscode.l10n.t('Config Binding')}\n\n`);
 
     // Status icon
     const statusIcon = linkedBlock.linkStatus === 'ok' ? '✅' : '❌';
@@ -77,7 +77,7 @@ export class LuaConfigHoverProvider implements vscode.HoverProvider {
       contents.appendMarkdown(`\n---\n`);
       const uri = vscode.Uri.file(linkedBlock.absoluteFilePath);
       const line = linkedBlock.luaNode?.loc.start.line || 1;
-      contents.appendMarkdown(`[📍 ${vscode.l10n.t('Jump to Lua Source')}](${uri}#L${line})\n`);
+      contents.appendMarkdown(`[📍 ${vscode.l10n.t('Jump to Source')}](${uri}#L${line})\n`);
     } else {
       // Show error info
       contents.appendMarkdown(`\n---\n`);

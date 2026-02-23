@@ -12,6 +12,8 @@ import { WizardBlockParser } from '../core/parser/wizardBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
 import { LuaParser } from '../core/parser/luaParser';
 import { LuaPatcher } from '../core/patcher/luaPatcher';
+import { JsonParser } from '../core/parser/jsonParser';
+import { JsonPatcher } from '../core/patcher/jsonPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
 import { ParsedWizardBlock, WizardStep, WizardVariable } from '../types';
@@ -104,9 +106,19 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
     });
 
-    // Listen to Lua file changes
+    // Listen to source file changes (Lua + JSON)
     const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
+    const jsonWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
+    const jsoncWatcher = vscode.workspace.createFileSystemWatcher('**/*.jsonc');
     luaWatcher.onDidChange(() => {
+      this.luaLinker.clearCache();
+      this.updateWebview(document, webviewPanel.webview);
+    });
+    jsonWatcher.onDidChange(() => {
+      this.luaLinker.clearCache();
+      this.updateWebview(document, webviewPanel.webview);
+    });
+    jsoncWatcher.onDidChange(() => {
       this.luaLinker.clearCache();
       this.updateWebview(document, webviewPanel.webview);
     });
@@ -114,6 +126,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     webviewPanel.onDidDispose(() => {
       changeSubscription.dispose();
       luaWatcher.dispose();
+      jsonWatcher.dispose();
+      jsoncWatcher.dispose();
     });
   }
 
@@ -200,34 +214,42 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   ): Promise<void> {
     try {
       const mdDir = path.dirname(document.uri.fsPath);
-      const luaPath = this.pathResolver.resolve(mdDir, message.file);
+      const sourcePath = this.pathResolver.resolve(mdDir, message.file);
+      const isJsonFile = /\.(json|jsonc)$/i.test(sourcePath);
 
-      if (!fs.existsSync(luaPath)) {
-        vscode.window.showErrorMessage(`文件不存在: ${luaPath}`);
+      if (!fs.existsSync(sourcePath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', sourcePath));
         return;
       }
 
-      // Read Lua file
-      const luaCode = fs.readFileSync(luaPath, 'utf-8');
+      const sourceCode = fs.readFileSync(sourcePath, 'utf-8');
+      let newCode = sourceCode;
 
-      // Parse and locate
-      const parser = new LuaParser(luaCode);
-      const result = parser.findNodeByPath(message.key);
-
-      if (!result.success || !result.node) {
-        vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
-        return;
+      if (isJsonFile) {
+        const parser = new JsonParser(sourceCode);
+        const result = parser.findNodeByPath(message.key);
+        if (!result.success || !result.node) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
+          return;
+        }
+        const patcher = new JsonPatcher(sourceCode);
+        newCode = patcher.updateValue(message.key, message.value);
+      } else {
+        const parser = new LuaParser(sourceCode);
+        const result = parser.findNodeByPath(message.key);
+        if (!result.success || !result.node) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
+          return;
+        }
+        const patcher = new LuaPatcher(sourceCode);
+        newCode = patcher.updateValue(result.node, message.value);
       }
-
-      // Generate new code
-      const patcher = new LuaPatcher(luaCode);
-      const newCode = patcher.updateValue(result.node, message.value);
 
       // Write file
-      fs.writeFileSync(luaPath, newCode, 'utf-8');
+      fs.writeFileSync(sourcePath, newCode, 'utf-8');
 
       // Clear cache
-      this.luaLinker.clearCache(luaPath);
+      this.luaLinker.clearCache(sourcePath);
 
       vscode.window.showInformationMessage(vscode.l10n.t('Updated {0} = {1}', message.key, message.value));
     } catch (error) {

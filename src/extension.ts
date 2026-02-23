@@ -170,8 +170,10 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Watch Lua file changes
+  // Watch source file changes (Lua + JSON)
   const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
+  const jsonWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
+  const jsoncWatcher = vscode.workspace.createFileSystemWatcher('**/*.jsonc');
 
   luaWatcher.onDidChange(uri => {
     console.log(`Lua file modified: ${uri.fsPath}`);
@@ -180,8 +182,19 @@ export function activate(context: vscode.ExtensionContext): void {
       decorationProvider = new LuaConfigDecorationProvider(context);
     }
   });
+  const handleJsonChange = (uri: vscode.Uri) => {
+    console.log(`JSON file modified: ${uri.fsPath}`);
+    if (decorationProvider) {
+      decorationProvider.dispose();
+      decorationProvider = new LuaConfigDecorationProvider(context);
+    }
+  };
+  jsonWatcher.onDidChange(handleJsonChange);
+  jsoncWatcher.onDidChange(handleJsonChange);
 
   context.subscriptions.push(luaWatcher);
+  context.subscriptions.push(jsonWatcher);
+  context.subscriptions.push(jsoncWatcher);
 
   // Watch document open for auto preview
   context.subscriptions.push(

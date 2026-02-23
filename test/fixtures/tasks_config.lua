@@ -7,7 +7,7 @@ TasksConfig = {
         { id = 101, name = "The Beginning", description = "Start your adventure", type = "story", required_level = 1, reward_exp = 100, reward_gold = 50, time_limit = 0, repeatable = false },
         { id = 102, name = "Village Defense", description = "Protect the village from goblins", type = "story", required_level = 3, reward_exp = 300, reward_gold = 150, time_limit = 0, repeatable = false },
         { id = 103, name = "The Dark Forest", description = "Explore the mysterious dark forest", type = "story", required_level = 5, reward_exp = 500, reward_gold = 250, time_limit = 0, repeatable = false },
-    },
+},
 
     -- Daily Tasks
     DailyTasks = {

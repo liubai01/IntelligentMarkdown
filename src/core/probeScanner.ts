@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { LuaParser } from './parser/luaParser';
+import { JsonParser } from './parser/jsonParser';
 
 /** A single probe marker found in a source file */
 export interface ProbeMarker {
@@ -181,7 +182,10 @@ export class ProbeScanner {
       };
     }
 
-    // 2. Fall back to function / variable lookup via LuaParser
+    // 2. Fall back to function / variable lookup via parser
+    if (/\.(json|jsonc)$/i.test(absolutePath)) {
+      return this.resolveByJsonPath(absolutePath, probeName);
+    }
     return this.resolveByAst(absolutePath, probeName);
   }
 
@@ -217,6 +221,27 @@ export class ProbeScanner {
       // Parse error — ignore and return null
     }
 
+    return null;
+  }
+
+  /**
+   * Resolve JSON probe target by path expression.
+   */
+  private resolveByJsonPath(absolutePath: string, name: string): ProbeTarget | null {
+    try {
+      const content = fs.readFileSync(absolutePath, 'utf-8');
+      const parser = new JsonParser(content);
+      const result = parser.findNodeByPath(name);
+      if (result.success && result.node) {
+        return {
+          filePath: absolutePath,
+          line: result.node.loc.start.line,
+          column: result.node.loc.start.column,
+        };
+      }
+    } catch {
+      // Parse error — ignore and return null
+    }
     return null;
   }
 

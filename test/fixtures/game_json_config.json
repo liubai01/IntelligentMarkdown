@@ -1,0 +1,29 @@
+{
+  "GameConfig": {
+    "Player": {
+      "MaxHealth": 100,
+      "MoveSpeed": 5.5,
+      "Name": "Hero",
+      "EnableAutoBattle": false,
+      "Difficulty": "normal"
+    },
+    "Settings": {
+      "Language": "en-US",
+      "EnableDebugLog": true
+    },
+    "LootTable": [
+      {
+        "id": 1,
+        "name": "Potion",
+        "dropRate": 0.35,
+        "enabled": true
+      },
+      {
+        "id": 2,
+        "name": "Elixir",
+        "dropRate": 0.1,
+        "enabled": false
+      }
+    ]
+  }
+}

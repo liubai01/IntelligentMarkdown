@@ -5,13 +5,13 @@ If you are new to the project, read in this order: usage docs -> architecture do
 
 ## What This Extension Does
 
-`IntelligentMarkdown` is a VS Code extension that lets teams define configuration in Markdown, edit Lua config values visually, and write changes back to source files with AST-assisted precision.
+`IntelligentMarkdown` is a VS Code extension that lets teams define configuration in Markdown, edit config values visually, and write changes back to source files with parser-assisted precision.
 
 Core idea:
 
 - Markdown is the configuration entrypoint (`lua-config`, `lua-wizard`)
 - Webview is the interactive surface (controls, wizard, Mermaid)
-- Lua source remains editable and stable (targeted value patching)
+- Source files remain editable and stable (targeted value patching)
 
 ## Current Core Capabilities
 
@@ -20,6 +20,13 @@ Core idea:
 - Mermaid rendering with clickable navigation
 - `probe://` links for function/variable/marker jump targets
 - Preview panel reuse, auto-open preview, and inline value decorations
+- JSON support (phase 1): value binding + probe navigation + basic value write-back
+
+## JSON Roadmap Status
+
+- Phase 1 (completed): JSON path binding, hover/link navigation, `probe://` JSON path resolution, basic value updates
+- Phase 2 (in progress): JSON table editing (`type: table`) with row/column cell write-back
+- Phase 3 (planned): JSON-focused wizard append workflows and expanded validation/UX
 
 ## Framework Snapshot
 

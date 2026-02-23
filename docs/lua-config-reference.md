@@ -24,7 +24,7 @@ A config block is a fenced code block with language `lua-config`, written in YAM
 
 ````markdown
 ```lua-config
-file: ./path/to/file.lua
+file: ./path/to/source.lua
 key: Table.Key.Path
 type: slider
 label: Display Name
@@ -37,8 +37,8 @@ label: Display Name
 
 | Field  | Type     | Description                        |
 |--------|----------|------------------------------------|
-| `file` | `string` | Relative path to the Lua file      |
-| `key`  | `string` | Dot-separated Lua variable path    |
+| `file` | `string` | Relative path to the source file (`.lua`, `.json`, `.jsonc`) |
+| `key`  | `string` | Dot/bracket path for target value |
 | `type` | `string` | Control type (see [Types](#types))  |
 
 ---
@@ -169,7 +169,9 @@ label: Difficulty
 
 ### `table`
 
-Spreadsheet-style editor for arrays of Lua objects.
+Spreadsheet-style editor for arrays of objects.
+
+> JSON support note: `table` for JSON is part of phase 2. Current implementation supports table editing for Lua.
 
 ```lua-config
 file: ./items.lua
@@ -207,6 +209,8 @@ columns:
 ### `code`
 
 Lua function editor — opens in VS Code's **native editor** with full language support (syntax highlighting, IntelliSense, go-to-definition, etc.). Changes are staged: click "Apply to Source" to write back.
+
+> JSON support note: `code` is currently Lua-focused and not available for JSON.
 
 ```lua-config
 file: ./game_config.lua
@@ -342,7 +346,7 @@ Clickable nodes appear with a **pointer cursor** in the rendered diagram. The sa
 
 ## Probe Navigation
 
-Probe links let you create **clickable links** in Markdown that jump directly to specific locations in Lua source files.
+Probe links let you create **clickable links** in Markdown that jump directly to specific locations in source files.
 
 ### Target Types
 
@@ -352,7 +356,8 @@ The `#name` part of a probe link is resolved in order:
 |----------|--------|-------------|
 | 1 | `@probe` marker | Comment marker `-- @probe:name` in Lua |
 | 2 | Function definition | `function A.B()`, `A.B = function()`, etc. |
-| 3 | Variable / table path | `A.B.C = value` |
+| 3 | Variable / table path | `A.B.C = value` (Lua) |
+| 4 | JSON path | `A.B[1].C` (JSON/JSONC) |
 
 This means you can jump to **any function or variable** without placing a probe comment — the comment is only needed for arbitrary locations (e.g. a specific line inside a function).
 
@@ -419,7 +424,7 @@ Use the `probe://` URL scheme in standard Markdown links:
 |------|-------------|
 | `Display Text` | Clickable text shown to the user |
 | `probe://` | URL scheme (required) |
-| `./relative/path.lua` | File path relative to the Markdown file |
+| `./relative/path.lua` | File path relative to the Markdown file (Lua/JSON/JSONC) |
 | `#target_name` | Probe marker, function path, or variable path |
 
 **Examples:**
@@ -471,7 +476,6 @@ Each block shows a status indicator:
 | `intelligentMarkdown.showInlineValues` | `boolean` | `true` | Show inline value decorations |
 | `intelligentMarkdown.autoOpenPreview` | `boolean` | `true` | Auto-open preview panel |
 | `intelligentMarkdown.autoOpenPreviewPattern` | `string` | `**/*.config.md` | Glob pattern for auto-preview |
-| `intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig` | `boolean` | `true` | Only auto-open if file has `lua-config` blocks |
 
 ---
 
