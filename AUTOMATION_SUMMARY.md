@@ -3,9 +3,9 @@
 ## ✅ 已完成配置
 
 ### 1. 文档系统
-- ✅ `docs/QUICK_RELEASE.md` - 快速发布指南（4条命令搞定）
-- ✅ `docs/RELEASE.md` - 完整发布流程和规范
-- ✅ `docs/SETUP_GITHUB_ACTIONS.md` - GitHub Actions 一次性配置指南
+- ✅ `docs/quick-release.md` - 快速发布指南（4条命令搞定）
+- ✅ `docs/release.md` - 完整发布流程和规范
+- ✅ `docs/setup-github-actions.md` - GitHub Actions 一次性配置指南
 - ✅ `docs/README.md` - 文档索引
 - ✅ `.github/RELEASE_CHECKLIST.md` - 发布检查清单
 
@@ -45,7 +45,7 @@
    - 访问：https://github.com/liubai01/IntelligentMarkdown/settings/actions
    - 确保启用 "Read and write permissions"
 
-**详细步骤**：参见 `docs/SETUP_GITHUB_ACTIONS.md`
+**详细步骤**：参见 `docs/setup-github-actions.md`
 
 ## 🚀 未来发布流程（超简单！）
 
@@ -90,7 +90,7 @@ git push origin v0.4.2
 
 当帮助发布时：
 
-1. ✅ 阅读 `docs/QUICK_RELEASE.md` 了解标准流程
+1. ✅ 阅读 `docs/quick-release.md` 了解标准流程
 2. ✅ 更新 `package.json` 版本号
 3. ✅ 运行测试确保通过
 4. ✅ 提交版本变更
@@ -126,9 +126,9 @@ git push origin v0.4.2
 
 ## 📚 完整文档
 
-- **快速指南**: `docs/QUICK_RELEASE.md`
-- **完整流程**: `docs/RELEASE.md`
-- **配置指南**: `docs/SETUP_GITHUB_ACTIONS.md`
+- **快速指南**: `docs/quick-release.md`
+- **完整流程**: `docs/release.md`
+- **配置指南**: `docs/setup-github-actions.md`
 - **检查清单**: `.github/RELEASE_CHECKLIST.md`
 - **文档索引**: `docs/README.md`
 
@@ -144,4 +144,4 @@ git push origin v0.4.2
 
 ---
 
-**下一步**：按照 `docs/SETUP_GITHUB_ACTIONS.md` 完成 GitHub Secret 配置
+**下一步**：按照 `docs/setup-github-actions.md` 完成 GitHub Secret 配置

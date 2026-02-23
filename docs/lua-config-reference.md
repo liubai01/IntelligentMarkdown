@@ -511,8 +511,8 @@ key: Game.Language
 type: select
 options:
   - { value: "en", label: "English" }
-  - { value: "zh", label: "中文" }
-  - { value: "ja", label: "日本語" }
+  - { value: "zh", label: "Chinese" }
+  - { value: "ja", label: "Japanese" }
 label: Language
 ```
 </details>

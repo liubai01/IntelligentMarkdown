@@ -315,8 +315,8 @@ npm run watch
 ## 📚 Documentation
 
 - 📗 [**lua-config Reference**](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md) — Complete syntax reference for `lua-config` blocks
-- 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md) — Detailed usage instructions
-- 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/ARCHITECTURE.md) — Technical documentation
+- 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/user-guide.md) — Detailed usage instructions
+- 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/architecture.md) — Technical documentation
 
 ---
 
@@ -359,7 +359,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### For Developers
 
-- **[Release Process](docs/QUICK_RELEASE.md)** - How to publish new versions
+- **[Release Process](docs/quick-release.md)** - How to publish new versions
 - **[Documentation](docs/)** - Complete developer documentation
 
 ---
@@ -374,5 +374,5 @@ MIT © [liubai01](https://github.com/liubai01)
   <a href="https://github.com/liubai01/IntelligentMarkdown"><strong>⭐ Star on GitHub</strong></a> · 
   <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md"><strong>📗 Reference</strong></a> · 
   <a href="https://github.com/liubai01/IntelligentMarkdown/issues"><strong>🐛 Report Issues</strong></a> · 
-  <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/USER_GUIDE.md"><strong>📖 User Guide</strong></a>
+  <a href="https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/user-guide.md"><strong>📖 User Guide</strong></a>
 </p>

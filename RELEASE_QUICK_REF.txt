@@ -61,9 +61,9 @@ Tests fail           | Fix tests before creating tag
 📚 DOCUMENTATION
 ─────────────────────────────────────────────────────────────
 
-• Quick Guide:    docs/QUICK_RELEASE.md
-• Full Process:   docs/RELEASE.md
-• Setup Guide:    docs/SETUP_GITHUB_ACTIONS.md
+• Quick Guide:    docs/quick-release.md
+• Full Process:   docs/release.md
+• Setup Guide:    docs/setup-github-actions.md
 • Checklist:      .github/RELEASE_CHECKLIST.md
 • Summary:        AUTOMATION_SUMMARY.md
 
@@ -73,7 +73,7 @@ Tests fail           | Fix tests before creating tag
 ─────────────────────────────────────────────────────────────
 
 ✅ DO:
-  • Read docs/QUICK_RELEASE.md for standard process
+  • Read docs/quick-release.md for standard process
   • Update package.json version
   • Run tests before release
   • Create git tag to trigger automation

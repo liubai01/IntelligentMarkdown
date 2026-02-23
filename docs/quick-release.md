@@ -55,4 +55,4 @@ Only needed once:
 | Tests fail | Fix tests before tagging |
 | Tag/version mismatch | Ensure tag `v0.4.2` matches `"version": "0.4.2"` |
 
-For detailed information, see [RELEASE.md](./RELEASE.md)
+For detailed information, see [release.md](./release.md)

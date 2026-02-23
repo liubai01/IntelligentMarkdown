@@ -55,6 +55,6 @@ After pushing the tag, GitHub Actions automatically:
 
 ## 📚 Documentation
 
-- Quick Guide: [docs/QUICK_RELEASE.md](../docs/QUICK_RELEASE.md)
-- Full Process: [docs/RELEASE.md](../docs/RELEASE.md)
-- Setup Guide: [docs/SETUP_GITHUB_ACTIONS.md](../docs/SETUP_GITHUB_ACTIONS.md)
+- Quick Guide: [docs/quick-release.md](../docs/quick-release.md)
+- Full Process: [docs/release.md](../docs/release.md)
+- Setup Guide: [docs/setup-github-actions.md](../docs/setup-github-actions.md)
