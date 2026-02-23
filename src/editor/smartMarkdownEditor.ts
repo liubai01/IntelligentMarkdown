@@ -89,7 +89,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           case 'executeWizard':
             await this.handleExecuteWizard(document, message, webviewPanel.webview);
             // Only refresh webview for 'append' action (which modifies files)
-            if (message.action !== 'run') {
+            if (message.action === 'append') {
               await this.updateWebview(document, webviewPanel.webview);
             }
             break;
@@ -882,6 +882,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       target: wizard.target,
       action: wizard.action,
       template: wizard.template,
+      prompt: wizard.prompt,
       commands: wizard.commands,
       cwd: wizard.cwd,
       steps: processedSteps,
@@ -958,8 +959,69 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   ): Promise<void> {
     if (message.action === 'run') {
       await this.handleExecuteWizardRun(document, message, webview);
+    } else if (message.action === 'prompt') {
+      await this.handleExecuteWizardPrompt(document, message, webview);
     } else {
       await this.handleExecuteWizardAppend(document, message, webview);
+    }
+  }
+
+  /**
+   * Handle wizard 'prompt' action — copy generated prompt and open chat.
+   */
+  private async handleExecuteWizardPrompt(
+    document: vscode.TextDocument,
+    message: { file?: string; generatedCode: string; wizardId?: string },
+    webview: vscode.Webview
+  ): Promise<void> {
+    const wizardId = message.wizardId || '';
+    const promptText = (message.generatedCode || '').trim();
+    if (!promptText) {
+      const errMsg = vscode.l10n.t('Prompt content is empty');
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
+      return;
+    }
+
+    try {
+      // Open chat first (best effort).
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open');
+      } catch {
+        // Ignore when unavailable.
+      }
+
+      // Add related file to chat context when possible (best effort).
+      if (message.file) {
+        const mdDir = path.dirname(document.uri.fsPath);
+        const resolved = this.pathResolver.resolve(mdDir, message.file);
+        if (fs.existsSync(resolved)) {
+          const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+          const wsRel = workspaceRoot
+            ? path.relative(workspaceRoot, resolved).replace(/\\/g, '/')
+            : path.basename(resolved);
+          await this.handleAddFileToChat({
+            absoluteFilePath: resolved,
+            workspaceRelativePath: wsRel
+          });
+        }
+      }
+
+      // Put prompt into clipboard, then auto-paste into the active chat composer.
+      await vscode.env.clipboard.writeText(promptText);
+      // Small delay to ensure chat input is focused.
+      await new Promise(resolve => setTimeout(resolve, 120));
+      try {
+        await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+      } catch {
+        // Keep clipboard fallback if paste command is unavailable.
+      }
+
+      const okMsg = vscode.l10n.t('Prompt inserted into chat input.');
+      webview.postMessage({ type: 'wizardResult', wizardId, success: true, message: okMsg });
+      vscode.window.showInformationMessage(okMsg);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      webview.postMessage({ type: 'wizardResult', wizardId, success: false, message: errMsg });
     }
   }
 
@@ -3725,7 +3787,14 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         var allValues = Object.assign({}, resolvedVars, values);
 
         // Choose the right template based on action
-        var template = data.action === 'run' ? (data.commands || '') : (data.template || '');
+        var template = '';
+        if (data.action === 'run') {
+          template = data.commands || '';
+        } else if (data.action === 'prompt') {
+          template = data.prompt || data.template || '';
+        } else {
+          template = data.template || '';
+        }
         return wizardApplyTemplate(template, allValues);
       }
 
@@ -3849,7 +3918,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             + '<div class="wizard-result-title">Completed Successfully</div>'
             + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
             + '<div class="wizard-result-actions">'
-            + '<button class="wizard-btn wizard-btn-secondary" onclick="wizardRestart(' + JSON.stringify(wizardId) + ')">🔄 Restart Wizard</button>'
+            + '<button class="wizard-btn wizard-btn-secondary wizard-restart-btn" data-wizard-id="' + wizardId + '">🔄 Restart Wizard</button>'
             + '</div>';
         } else {
           resultEl.className = 'wizard-result wizard-result-error';
@@ -3857,7 +3926,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             + '<div class="wizard-result-title">Execution Failed</div>'
             + (message ? '<div class="wizard-result-detail">' + message + '</div>' : '')
             + '<div class="wizard-result-actions">'
-            + '<button class="wizard-btn wizard-btn-primary" onclick="wizardRestart(' + JSON.stringify(wizardId) + ')">🔄 Restart Wizard</button>'
+            + '<button class="wizard-btn wizard-btn-primary wizard-restart-btn" data-wizard-id="' + wizardId + '">🔄 Restart Wizard</button>'
             + '</div>';
         }
         resultEl.style.display = 'block';
@@ -3901,6 +3970,17 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         var match = String(target.id).match(/^(wizard-\\d+)-input-\\d+$/);
         if (!match) return;
         persistWizardState(match[1]);
+      });
+
+      // Handle dynamically rendered restart buttons without inline onclick
+      document.addEventListener('click', function(event) {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        var btn = target.closest('.wizard-restart-btn');
+        if (!btn) return;
+        var wizardId = btn.getAttribute('data-wizard-id') || '';
+        if (!wizardId) return;
+        wizardRestart(wizardId);
       });
 
       // Restore state after DOM/script re-created by extension refresh

@@ -54,7 +54,7 @@ export class WizardBlockParser {
       }
 
       const action = parsed.action || 'append';
-      const validActions = ['append', 'run'];
+      const validActions = ['append', 'run', 'prompt'];
       if (!validActions.includes(action)) {
         return { success: false, error: `Invalid action: ${action}` };
       }
@@ -73,6 +73,10 @@ export class WizardBlockParser {
       } else if (action === 'run') {
         if (!parsed.commands) {
           return { success: false, error: 'Missing required field: commands (for run action)' };
+        }
+      } else if (action === 'prompt') {
+        if (!parsed.prompt && !parsed.template) {
+          return { success: false, error: 'Missing required field: prompt (or template) for prompt action' };
         }
       }
 
@@ -133,6 +137,7 @@ export class WizardBlockParser {
         icon: parsed.icon,
         template: parsed.template,
         commands: parsed.commands,
+        prompt: parsed.prompt,
         cwd: parsed.cwd,
         variables,
         steps

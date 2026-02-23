@@ -8,7 +8,7 @@
 export type WizardFieldType = 'number' | 'string' | 'boolean' | 'select';
 
 /** Wizard action type */
-export type WizardActionType = 'append' | 'run';
+export type WizardActionType = 'append' | 'run' | 'prompt';
 
 /** Wizard step option (for select type) */
 export interface WizardOption {
@@ -56,7 +56,7 @@ export interface WizardBlock {
   file: string;
   /** Target path in file (for 'append' action: Lua table path) */
   target?: string;
-  /** Action type: 'append' inserts code into Lua, 'run' executes shell commands */
+  /** Action type: 'append' inserts code into Lua, 'run' executes shell commands, 'prompt' generates prompt text */
   action: WizardActionType;
   /** Display label */
   label?: string;
@@ -66,6 +66,8 @@ export interface WizardBlock {
   template?: string;
   /** Shell commands template with {{variable}} placeholders (for 'run' action) */
   commands?: string;
+  /** Prompt template with {{variable}} placeholders (for 'prompt' action) */
+  prompt?: string;
   /** Working directory for shell commands (relative to workspace root, default '.') */
   cwd?: string;
   /** Dynamic variables resolved from files */
