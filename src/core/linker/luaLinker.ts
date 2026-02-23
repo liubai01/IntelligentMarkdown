@@ -90,10 +90,10 @@ export class LuaLinker {
     }
 
     try {
-      // Phase 1 JSON support: basic controls + navigation only
-      if (isJsonFile && (block.type === 'table' || block.type === 'code')) {
+      // JSON code editor is postponed to a later phase
+      if (isJsonFile && block.type === 'code') {
         linkedBlock.linkStatus = 'parse-error';
-        linkedBlock.linkError = vscode.l10n.t('Type "{0}" is not supported for JSON in phase 1', block.type);
+        linkedBlock.linkError = vscode.l10n.t('Type "{0}" is not supported for JSON yet', block.type);
         return linkedBlock;
       }
 
@@ -128,6 +128,18 @@ export class LuaLinker {
         const tableData = luaParser.extractTableArray(result.astNode);
         if (tableData) {
           linkedBlock.luaNode.tableData = tableData;
+        }
+      }
+
+      if (isJsonFile && block.type === 'table' && result.astNode) {
+        const jsonParser = parser as JsonParser;
+        const tableData = jsonParser.extractTableArray(result.astNode);
+        if (tableData) {
+          linkedBlock.luaNode.tableData = tableData;
+        } else {
+          linkedBlock.linkStatus = 'parse-error';
+          linkedBlock.linkError = vscode.l10n.t('JSON table editor requires an array of objects');
+          return linkedBlock;
         }
       }
 

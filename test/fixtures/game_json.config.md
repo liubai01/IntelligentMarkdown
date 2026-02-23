@@ -48,6 +48,20 @@ options:
 label: Difficulty
 ```
 
+## JSON Table Editing (phase 2)
+
+```lua-config
+file: ./game_json_config.json
+key: GameConfig.LootTable
+type: table
+label: Loot Table
+columns:
+  - { key: "id", label: "ID", type: "number", readonly: true, width: "70px" }
+  - { key: "name", label: "Name", type: "string", width: "160px" }
+  - { key: "dropRate", label: "Drop Rate", type: "number", min: 0, max: 1, step: 0.01, width: "120px" }
+  - { key: "enabled", label: "Enabled", type: "boolean", width: "100px" }
+```
+
 ## Probe Links (JSON path)
 
 [Jump to MaxHealth](probe://./game_json_config.json#GameConfig.Player.MaxHealth)

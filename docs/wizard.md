@@ -1,6 +1,8 @@
-# Lua Wizard Guide
+# Config Wizard Guide
 
-`lua-wizard` is a Markdown-embedded wizard block that collects inputs and performs an action.  
+`lua-wizard` is the current Markdown syntax identifier for wizard blocks (kept for compatibility).  
+At the product level, this is called a **Wizard Block**.
+It collects inputs and performs an action.
 Two action types are currently supported:
 
 - `append`: generate content from a template and append it to a Lua table

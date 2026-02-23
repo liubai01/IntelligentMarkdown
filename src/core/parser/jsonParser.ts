@@ -48,6 +48,58 @@ export class JsonParser {
     }
   }
 
+  /**
+   * Extract table-like array rows from a JSON array node.
+   * Shape matches Lua table editor expectations.
+   */
+  extractTableArray(node: any): Array<{
+    data: Record<string, any>;
+    ranges: Record<string, [number, number]>;
+    rowLoc?: { start: { line: number; column: number }; end: { line: number; column: number } };
+  }> | null {
+    if (!node || node.type !== 'array' || !Array.isArray(node.children)) {
+      return null;
+    }
+
+    const result: Array<{
+      data: Record<string, any>;
+      ranges: Record<string, [number, number]>;
+      rowLoc?: { start: { line: number; column: number }; end: { line: number; column: number } };
+    }> = [];
+
+    for (const rowNode of node.children) {
+      if (!rowNode || rowNode.type !== 'object' || !Array.isArray(rowNode.children)) {
+        continue;
+      }
+
+      const rowData: Record<string, any> = {};
+      const rowRanges: Record<string, [number, number]> = {};
+
+      for (const propNode of rowNode.children) {
+        if (!propNode || propNode.type !== 'property' || !Array.isArray(propNode.children) || propNode.children.length < 2) {
+          continue;
+        }
+        const keyNode = propNode.children[0];
+        const valueNode = propNode.children[1];
+        const key = String(keyNode.value);
+
+        rowData[key] = getNodeValue(valueNode);
+        rowRanges[key] = [valueNode.offset, valueNode.offset + valueNode.length];
+      }
+
+      result.push({
+        data: rowData,
+        ranges: rowRanges,
+        rowLoc: {
+          start: this.offsetToLoc(rowNode.offset),
+          end: this.offsetToLoc(rowNode.offset + rowNode.length)
+        }
+      });
+    }
+
+    return result.length > 0 ? result : null;
+  }
+
   private toValueNode(node: { type: string; offset: number; length: number }): LuaValueNode {
     const start = this.offsetToLoc(node.offset);
     const end = this.offsetToLoc(node.offset + node.length);

@@ -13,6 +13,26 @@ Core idea:
 - Webview is the interactive surface (controls, wizard, Mermaid)
 - Source files remain editable and stable (targeted value patching)
 
+## Product Direction
+
+The long-term direction is **language-agnostic config workflows**:
+
+- one Markdown interaction model
+- multiple source adapters (Lua, JSON, and future formats)
+- predictable navigation and write-back behavior across adapters
+
+See [Product Strategy](./product-strategy.md) for full details.
+
+## Terminology Baseline
+
+Use this naming model across docs:
+
+- Product: `config.md`
+- Syntax identifiers: `lua-config`, `lua-wizard`
+- Language-neutral concepts: Config Block, Wizard Block, Source Adapter
+
+See [Terminology](./terminology.md).
+
 ## Current Core Capabilities
 
 - Visual editing with `lua-config` (`number`, `slider`, `string`, `boolean`, `select`, `table`, `code`)
@@ -20,13 +40,15 @@ Core idea:
 - Mermaid rendering with clickable navigation
 - `probe://` links for function/variable/marker jump targets
 - Preview panel reuse, auto-open preview, and inline value decorations
-- JSON support (phase 1): value binding + probe navigation + basic value write-back
+- JSON support (phase 1 + phase 2): value binding, probe navigation, value write-back, and table editing
 
-## JSON Roadmap Status
+## Language Support Status
 
-- Phase 1 (completed): JSON path binding, hover/link navigation, `probe://` JSON path resolution, basic value updates
-- Phase 2 (in progress): JSON table editing (`type: table`) with row/column cell write-back
-- Phase 3 (planned): JSON-focused wizard append workflows and expanded validation/UX
+- Lua: mature support across binding, table editing, code editing, and wizard workflows
+- JSON/JSONC:
+  - phase 1 complete: value binding, hover/link navigation, probe path resolution, value updates
+  - phase 2 complete: table editing for arrays of objects
+  - phase 3 planned: wizard append patterns and deeper validation UX
 
 ## Framework Snapshot
 
@@ -41,11 +63,16 @@ For details, see [Architecture](./architecture.md).
 
 ## Document Navigation
 
+### Product
+
+- [Product Strategy](./product-strategy.md)
+- [Terminology](./terminology.md)
+
 ### Usage
 
 - [User Guide](./user-guide.md)
 - [lua-config Reference](./lua-config-reference.md)
-- [Lua Wizard Guide](./wizard.md)
+- [Config Wizard Guide](./wizard.md)
 
 ### Engineering
 
@@ -59,6 +86,6 @@ For details, see [Architecture](./architecture.md).
 
 ## Recommended Reading Paths
 
-- New users: `USER_GUIDE` -> `lua-config-reference` -> `WIZARD`
-- Developers: `ARCHITECTURE` -> `lua-config-reference` -> `WIZARD`
-- Maintainers: `QUICK_RELEASE` -> `RELEASE` -> `SETUP_GITHUB_ACTIONS`
+- New users: `user-guide.md` -> `lua-config-reference.md` -> `wizard.md`
+- Developers: `architecture.md` -> `lua-config-reference.md` -> `wizard.md`
+- Maintainers: `quick-release.md` -> `release.md` -> `setup-github-actions.md`

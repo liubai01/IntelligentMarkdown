@@ -46,6 +46,25 @@ describe('JsonParser', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Path not found');
   });
+
+  it('extracts table rows from array nodes', () => {
+    const parser = new JsonParser(sampleJson);
+    const result = parser.findNodeByPath('GameConfig.Items');
+    expect(result.success).toBe(true);
+    const rows = parser.extractTableArray(result.astNode);
+    expect(rows).not.toBeNull();
+    expect(rows?.length).toBe(2);
+    expect(rows?.[0].data.id).toBe(1);
+    expect(rows?.[1].data.name).toBe('Bow');
+  });
+
+  it('returns null for non-array table extraction', () => {
+    const parser = new JsonParser(sampleJson);
+    const result = parser.findNodeByPath('GameConfig.Player');
+    expect(result.success).toBe(true);
+    const rows = parser.extractTableArray(result.astNode);
+    expect(rows).toBeNull();
+  });
 });
 
 describe('parseJsonPath', () => {

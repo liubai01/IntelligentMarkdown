@@ -1,12 +1,17 @@
 # User Guide
 
-This guide is for everyday users who want to edit Lua or JSON configuration through Markdown.  
+This guide is for everyday users who want to edit configuration through Markdown.  
 For full field-level syntax details, see [lua-config Reference](./lua-config-reference.md).
+
+Current source support:
+
+- Lua (full workflow)
+- JSON/JSONC (value + table workflows)
 
 ## Who This Is For
 
 - Designers and planners who want a visual config workflow
-- Engineers who still maintain Lua sources directly
+- Engineers who still maintain source files directly
 - Project maintainers who want one documented config entrypoint
 
 ## Quick Start
@@ -80,19 +85,18 @@ label: Player Max Health
 ```
 ````
 
-> Current JSON support in phase 1 includes basic value bindings and probe navigation.
-> JSON table editing (`type: table`) is part of phase 2.
+> JSON support now includes basic value bindings, probe navigation, and table editing (`type: table`) for arrays of objects.
 
 ## Common Capabilities
 
 ### Visual editing and sync
 
-- Values edited in preview are written back to Lua files
+- Values edited in preview are written back to source files
 - `table` and `code` blocks are initialized lazily for better initial render performance
 
 ### Source navigation
 
-- Jump from preview cards to Lua source locations
+- Jump from preview cards to source locations
 - Use `probe://` links to jump to markers, functions, variable paths, or JSON paths
 
 ### Multi-step wizard
@@ -100,7 +104,7 @@ label: Player Max Health
 - `lua-wizard` supports:
   - `append`: append template-generated entries into Lua tables
   - `run`: execute template-generated command sequences with confirmation
-- See [Lua Wizard Guide](./wizard.md)
+- See [Config Wizard Guide](./wizard.md)
 
 ### Mermaid and interactive nodes
 
@@ -149,6 +153,7 @@ Example:
 ## Continue Reading
 
 - [Documentation Home](./overview.md)
+- [Terminology](./terminology.md)
 - [lua-config Reference](./lua-config-reference.md)
-- [Lua Wizard Guide](./wizard.md)
+- [Config Wizard Guide](./wizard.md)
 - [Architecture](./architecture.md)

@@ -15,8 +15,8 @@ Markdown document
         v
 Extension Host
   |- Parsing: ConfigBlockParser / WizardBlockParser
-  |- Linking: LuaLinker / ProbeScanner / PathResolver
-  |- Write-back: LuaPatcher/LuaParser + JsonPatcher/JsonParser
+  |- Linking: SourceLinker / ProbeScanner / PathResolver
+  |- Adapters: LuaParser/Patcher + JsonParser/Patcher
   |- Editor: SmartMarkdownEditorProvider(Webview)
   '- Providers/Commands: links, hover, decorations, commands
         | postMessage
@@ -49,7 +49,8 @@ Webview UI
   - Parses `lua-wizard` blocks
   - Supports both `append` and `run` actions
 - `src/core/linker/luaLinker.ts`
-  - Resolves Markdown blocks to Lua AST nodes and current values
+  - Current linker implementation (historical naming), now handling Lua + JSON paths
+  - Planned to evolve into a formal language-neutral source linker interface
 - `src/core/parser/luaParser.ts`
   - Provides AST path lookup and function/node resolution via `luaparse`
 - `src/core/parser/jsonParser.ts`
@@ -86,8 +87,9 @@ Webview UI
 - Key behavior:
   - `table` and `code` blocks are lazily initialized
   - Value updates write back to Lua and clear relevant caches
-  - JSON files (`.json`, `.jsonc`) are supported for phase-1 value binding/editing
-  - JSON `table` and `code` types are reserved for later phases
+  - JSON files (`.json`, `.jsonc`) are supported for value binding/editing
+  - JSON `table` is supported for arrays of objects
+  - JSON `code` remains unsupported
 
 ### lua-wizard
 
@@ -111,21 +113,31 @@ Webview UI
 
 1. Open Markdown in preview
 2. Parse `lua-config` and `lua-wizard` blocks
-3. Link blocks to Lua AST and read current values
+3. Link blocks to source nodes and read current values
 4. Send base HTML first, then hydrate heavy blocks asynchronously
 
 ### Value update write-back flow
 
 1. Webview sends an update message
-2. Extension host resolves target node/range in Lua AST
+2. Extension host resolves target node/range in source parser
 3. Apply targeted replacement and write file
 4. Clear cache and send result back to Webview
 
 ### Navigation and reverse linkage
 
-- Preview interactions can jump to Lua source positions
+- Preview interactions can jump to source positions
 - Lua doc links can open Markdown preview and scroll to sections
 - File watchers trigger refresh where needed
+
+## Adapter-oriented evolution
+
+The product is moving toward adapter-based architecture:
+
+- shared block grammar and UI controls
+- format-specific parser/patcher/linker adapters
+- shared navigation protocol (`probe://`) across adapters
+
+This keeps UX stable while adding new source formats incrementally.
 
 ## Current Extension Settings
 

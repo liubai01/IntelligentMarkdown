@@ -19,9 +19,18 @@
 
 ## 💡 What is config.md?
 
-**config.md** is a VS Code extension that lets you manage configuration files through Markdown documents. Write human-readable documentation with embedded config blocks — and get a visual editor for free.
+**config.md** is a VS Code extension that lets you manage configuration through Markdown documents. Write human-readable docs with embedded config blocks, then edit values in a visual UI that writes back to source files.
 
-> 📌 Currently focused on **Lua** configuration. More languages coming soon.
+> 🎯 Product direction: language-agnostic config workflows with pluggable source adapters.
+> Today: strong Lua support + incremental JSON/JSONC support.
+
+### Naming Conventions
+
+- **Product name**: `config.md`
+- **Syntax identifiers**: `lua-config`, `lua-wizard` (kept for compatibility)
+- **Language-neutral concepts**: Config Block, Wizard Block, Source Adapter
+
+See docs: [Terminology](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/terminology.md).
 
 ### The Idea
 
@@ -41,7 +50,7 @@ label: Maximum Health
 ```
 ````
 
-Open the preview panel, and you get an interactive visual editor — sliders, toggles, dropdowns — that syncs changes back to your Lua files in real-time.
+Open the preview panel, and you get an interactive visual editor — sliders, toggles, dropdowns — that syncs changes back to your source files in real time.
 
 ---
 
@@ -50,12 +59,13 @@ Open the preview panel, and you get an interactive visual editor — sliders, to
 | Feature | Description |
 |---------|-------------|
 | 🎨 **Visual Editor** | Edit config values with sliders, toggles, dropdowns, input fields, and tables |
-| 🔄 **Two-way Sync** | Changes in the visual editor auto-sync to source Lua files |
+| 🔄 **Two-way Sync** | Changes in the visual editor auto-sync to source files |
 | 📝 **Markdown Native** | Your config docs *are* the config editor — document and edit in one place |
-| 🎯 **Jump to Source** | Click any value to navigate directly to the Lua code |
+| 🎯 **Jump to Source** | Click any value to navigate directly to source code |
 | ⚡ **Real-time Preview** | See changes instantly as you type |
 | 📊 **Table Editing** | Batch-edit arrays of objects in a spreadsheet-like interface |
 | 💻 **Function Editor** | Edit Lua functions in VS Code's native editor — with full IntelliSense, go-to-definition, and staged save |
+| 🌐 **Adapter Expansion** | Designed to evolve from Lua-first into language-agnostic config editing |
 
 ---
 
@@ -132,6 +142,14 @@ Click the **preview icon** (📖) in the top-right corner, or press `Ctrl+Shift+
 | `string` | Text values | Names, Paths |
 | `table` | Array of objects | Item lists, Character stats |
 
+## 🧩 Format Support
+
+| Source format | Status | Notes |
+|------|--------|-------|
+| Lua | ✅ Mature | Full binding, table editing, code editing, wizard |
+| JSON / JSONC | ✅ Active | Value binding, probe navigation, value editing, table editing |
+| YAML / TOML | 🧭 Planned | Targeted through adapter-based architecture |
+
 ---
 
 ## 📋 Config Block Reference
@@ -188,15 +206,13 @@ columns:
 | `intelligentMarkdown.autoSave` | `true` | Auto-save Lua files after changes |
 | `intelligentMarkdown.autoOpenPreview` | `true` | Auto-open preview for config files |
 | `intelligentMarkdown.autoOpenPreviewPattern` | `**/*.config.md` | Glob pattern for auto-preview |
-| `intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig` | `true` | Only auto-open if file contains `lua-config` blocks |
 
 ### Recommended Configuration
 
 ```json
 {
   "intelligentMarkdown.autoOpenPreview": true,
-  "intelligentMarkdown.autoOpenPreviewPattern": "**/*.md",
-  "intelligentMarkdown.autoOpenPreviewOnlyWithLuaConfig": true
+  "intelligentMarkdown.autoOpenPreviewPattern": "**/*.md"
 }
 ```
 
@@ -287,7 +303,8 @@ label: Game Difficulty
 ## 🗺️ Roadmap
 
 - [x] Lua configuration support
-- [ ] YAML / JSON / TOML config support
+- [x] JSON / JSONC support
+- [ ] YAML / TOML adapters
 - [ ] Custom theme for visual editor
 - [ ] Export config snapshots
 - [ ] Config validation rules
@@ -317,6 +334,7 @@ npm run watch
 - 📗 [**lua-config Reference**](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md) — Complete syntax reference for `lua-config` blocks
 - 📖 [User Guide](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/user-guide.md) — Detailed usage instructions
 - 🏗️ [Architecture](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/architecture.md) — Technical documentation
+- 🧭 [Product Strategy](https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/product-strategy.md) — Language-agnostic product direction
 
 ---
 

@@ -268,15 +268,47 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   ): Promise<void> {
     try {
       const mdDir = path.dirname(document.uri.fsPath);
-      const luaPath = this.pathResolver.resolve(mdDir, message.file);
+      const sourcePath = this.pathResolver.resolve(mdDir, message.file);
+      const isJsonFile = /\.(json|jsonc)$/i.test(sourcePath);
 
-      if (!fs.existsSync(luaPath)) {
-        vscode.window.showErrorMessage(`文件不存在: ${luaPath}`);
+      if (!fs.existsSync(sourcePath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', sourcePath));
+        return;
+      }
+
+      if (isJsonFile) {
+        const sourceCode = fs.readFileSync(sourcePath, 'utf-8');
+        const parser = new JsonParser(sourceCode);
+        const result = parser.findNodeByPath(message.key);
+        if (!result.success || !result.astNode) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Variable not found: {0}', message.key));
+          return;
+        }
+        const tableData = parser.extractTableArray(result.astNode);
+        if (!tableData || message.rowIndex >= tableData.length) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
+          return;
+        }
+        if (!tableData[message.rowIndex].ranges[message.colKey]) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', message.colKey));
+          return;
+        }
+
+        const jsonPath = `${message.key}[${message.rowIndex}].${message.colKey}`;
+        const patcher = new JsonPatcher(sourceCode);
+        const newCode = patcher.updateValue(jsonPath, message.value);
+
+        fs.writeFileSync(sourcePath, newCode, 'utf-8');
+        this.luaLinker.clearCache(sourcePath);
+
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)
+        );
         return;
       }
 
       // Read Lua file
-      const luaCode = fs.readFileSync(luaPath, 'utf-8');
+      const luaCode = fs.readFileSync(sourcePath, 'utf-8');
 
       // Parse and locate table array
       const parser = new LuaParser(luaCode);
@@ -289,7 +321,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
       // Extract table array
       const tableData = parser.extractTableArray(result.astNode);
-      
+
       if (!tableData || message.rowIndex >= tableData.length) {
         vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
         return;
@@ -297,7 +329,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
       // Get target cell range
       const cellRange = tableData[message.rowIndex].ranges[message.colKey];
-      
+
       if (!cellRange) {
         vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', message.colKey));
         return;
@@ -316,10 +348,10 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const newCode = patcher.updateValueByRange(cellRange, message.value, valueType);
 
       // Write file
-      fs.writeFileSync(luaPath, newCode, 'utf-8');
+      fs.writeFileSync(sourcePath, newCode, 'utf-8');
 
       // Clear cache
-      this.luaLinker.clearCache(luaPath);
+      this.luaLinker.clearCache(sourcePath);
 
       vscode.window.showInformationMessage(
         vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)

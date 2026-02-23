@@ -1,6 +1,18 @@
 # lua-config Reference
 
-> config.md syntax reference for `lua-config` blocks, Mermaid diagrams, and probe navigation.
+> config.md syntax reference for config blocks, Mermaid diagrams, and probe navigation.
+
+`lua-config` is the current fenced-block identifier for compatibility.
+The product direction is language-agnostic, but block syntax remains stable while adapters evolve.
+
+For naming conventions, see [Terminology](./terminology.md).
+
+## Naming Conventions
+
+- Use `config.md` when referring to the product.
+- Use "Config Block" for language-neutral behavior.
+- Use `lua-config` only when referring to Markdown syntax identifier and examples.
+- Use "source file" unless a rule is explicitly Lua-only.
 
 ---
 
@@ -30,6 +42,8 @@ type: slider
 label: Display Name
 ```
 ````
+
+The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
 
 ---
 
@@ -171,7 +185,7 @@ label: Difficulty
 
 Spreadsheet-style editor for arrays of objects.
 
-> JSON support note: `table` for JSON is part of phase 2. Current implementation supports table editing for Lua.
+> JSON support note: `table` is now supported for JSON arrays of objects in phase 2.
 
 ```lua-config
 file: ./items.lua
