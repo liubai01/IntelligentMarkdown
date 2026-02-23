@@ -1,4 +1,5 @@
 -- Player Configuration Table
+-- @config-md: ./player.config.md
 -- Author: Game Programming Team
 -- Last modified: 2024-01-15
 

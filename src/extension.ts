@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
   LuaConfigDocumentLinkProvider,
   LuaConfigHoverProvider,
@@ -221,11 +222,6 @@ async function handleAutoOpenPreview(
   context: vscode.ExtensionContext,
   document: vscode.TextDocument
 ): Promise<void> {
-  // Check if it's a Markdown file
-  if (document.languageId !== 'markdown') {
-    return;
-  }
-
   // Read configuration
   const config = vscode.workspace.getConfiguration('intelligentMarkdown');
   const autoOpenPreview = config.get<boolean>('autoOpenPreview', false);
@@ -234,22 +230,84 @@ async function handleAutoOpenPreview(
     return;
   }
 
-  // Check file match pattern — if it matches, open preview directly
-  const pattern = config.get<string>('autoOpenPreviewPattern', '**/*.config.md');
-  
-  if (!matchGlobPattern(document.uri.fsPath, pattern)) {
+  // Markdown file flow: open preview directly if pattern matches
+  if (document.languageId === 'markdown') {
+    const pattern = config.get<string>('autoOpenPreviewPattern', '**/*.config.md');
+    if (!matchGlobPattern(document.uri.fsPath, pattern)) {
+      return;
+    }
+
+    // If current panel is already showing the same document, skip
+    if (currentPreviewPanel && currentPreviewDocUri === document.uri.toString()) {
+      return;
+    }
+
+    // Delay opening to let editor finish loading
+    setTimeout(() => {
+      void openPreviewForDocument(context, document);
+    }, 300);
     return;
   }
 
-  // If current panel is already showing the same document, skip
-  if (currentPreviewPanel && currentPreviewDocUri === document.uri.toString()) {
+  // Source file flow: read header annotation and auto-open mapped Markdown preview
+  const mappedMarkdownPath = resolveMappedMarkdownPath(document);
+  if (!mappedMarkdownPath) {
+    return;
+  }
+
+  const mappedUri = vscode.Uri.file(mappedMarkdownPath);
+  if (currentPreviewPanel && currentPreviewDocUri === mappedUri.toString()) {
     return;
   }
 
   // Delay opening to let editor finish loading
   setTimeout(() => {
-    openPreviewForDocument(context, document);
+    void vscode.workspace.openTextDocument(mappedUri)
+      .then(
+        mdDocument => openPreviewForDocument(context, mdDocument),
+        () => undefined
+      );
   }, 300);
+}
+
+/**
+ * Resolve mapped config Markdown path from source file header comment.
+ * Supported annotation:
+ *   -- @config-md: ./foo.config.md
+ *   // @config-md: ./foo.config.md
+ *   # @config-md: ./foo.config.md
+ */
+function resolveMappedMarkdownPath(document: vscode.TextDocument): string | null {
+  if (document.uri.scheme !== 'file') {
+    return null;
+  }
+
+  const sourcePath = document.uri.fsPath;
+  if (!/\.(lua|json|jsonc)$/i.test(sourcePath)) {
+    return null;
+  }
+
+  const maxLines = Math.min(document.lineCount, 40);
+  const mappingRegex = /@config-md:\s*(.+?)\s*$/i;
+
+  for (let i = 0; i < maxLines; i++) {
+    const line = document.lineAt(i).text;
+    const match = mappingRegex.exec(line);
+    if (!match) {
+      continue;
+    }
+
+    const rawPath = match[1].trim().replace(/^['"]|['"]$/g, '');
+    const resolvedPath = path.isAbsolute(rawPath)
+      ? rawPath
+      : path.resolve(path.dirname(sourcePath), rawPath);
+
+    if (resolvedPath.toLowerCase().endsWith('.md') && fs.existsSync(resolvedPath)) {
+      return resolvedPath;
+    }
+  }
+
+  return null;
 }
 
 /**

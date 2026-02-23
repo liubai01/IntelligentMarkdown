@@ -1,4 +1,5 @@
 -- Fixture adapted from slua-unreal LuaGameState.lua:
+-- @config-md: ./slua-game-state.config.md
 -- https://github.com/Tencent/sluaunreal/blob/master/Content/Lua/LuaGameState.lua
 -- Intentionally kept close to the original script layout and symbols.
 

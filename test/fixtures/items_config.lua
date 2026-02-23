@@ -1,4 +1,5 @@
 -- Item Configuration Table
+-- @config-md: ./items.config.md
 -- Configures in-game item attributes
 
 ItemsConfig = {

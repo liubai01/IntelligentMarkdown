@@ -1,4 +1,5 @@
 -- Task Configuration Table
+-- @config-md: ./task_create_wizard.config.md
 -- Defines available tasks/missions in the game
 
 TasksConfig = {

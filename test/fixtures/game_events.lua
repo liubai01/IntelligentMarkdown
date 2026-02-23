@@ -1,4 +1,5 @@
 -- Game Event System
+-- @config-md: ./game_events.config.md
 -- Manages callback functions and related configuration for various in-game events
 -- Last modified: 2025-02-14
 

@@ -1,4 +1,5 @@
 -- Quest System Configuration
+-- @config-md: ./quest_system.config.md
 -- @probe:quest_settings
 -- @doc:quest-settings
 QuestSystem = {

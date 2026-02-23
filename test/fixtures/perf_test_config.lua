@@ -1,4 +1,5 @@
 -- Performance Test Configuration
+-- @config-md: ./perf_test.config.md
 -- Large dataset for stress testing table rendering
 
 PerfTestConfig = {
