@@ -65,6 +65,7 @@ Open the preview panel, and you get an interactive visual editor — sliders, to
 | ⚡ **Real-time Preview** | See changes instantly as you type |
 | 📊 **Table Editing** | Batch-edit arrays of objects in a spreadsheet-like interface |
 | 💻 **Function Editor** | Edit Lua functions in VS Code's native editor — with full IntelliSense, go-to-definition, and staged save |
+| 🤖 **AI Prompt Templating** | Build reusable `lua-wizard` prompt templates from config variables and step inputs, then send generated prompts directly into Cursor chat |
 | 🌐 **Adapter Expansion** | Designed to evolve from Lua-first into language-agnostic config editing |
 
 ---
