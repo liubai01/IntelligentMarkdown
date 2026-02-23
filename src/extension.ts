@@ -20,11 +20,14 @@ let decorationProvider: LuaConfigDecorationProvider | undefined;
 // Current active preview panel (reuse to avoid creating too many windows)
 let currentPreviewPanel: vscode.WebviewPanel | undefined;
 let currentPreviewDocUri: string | undefined;
+let lastPreviewFocusAt = 0;
 
 /**
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {
+  let lastActiveDocument: vscode.TextDocument | undefined = vscode.window.activeTextEditor?.document;
+
   console.log('Intelligent Markdown for Lua activated');
 
   // Register document link provider
@@ -200,15 +203,35 @@ export function activate(context: vscode.ExtensionContext): void {
   // Watch document open for auto preview
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
-      if (editor) {
-        handleAutoOpenPreview(context, editor.document);
+      if (!editor) {
+        lastActiveDocument = undefined;
+        return;
       }
+
+      const fromMarkdownNavigation = Boolean(
+        lastActiveDocument &&
+        lastActiveDocument.uri.toString() !== editor.document.uri.toString() &&
+        lastActiveDocument.languageId === 'markdown' &&
+        editor.document.languageId === 'markdown'
+      );
+
+      const fromPreviewPanelNavigation = Boolean(
+        currentPreviewDocUri &&
+        lastPreviewFocusAt > 0 &&
+        (Date.now() - lastPreviewFocusAt) < 1500
+      );
+
+      void handleAutoOpenPreview(context, editor.document, {
+        fromMarkdownNavigation,
+        fromPreviewPanelNavigation
+      });
+      lastActiveDocument = editor.document;
     })
   );
 
   // If a Markdown file is already open, check auto-open preview
   if (vscode.window.activeTextEditor) {
-    handleAutoOpenPreview(context, vscode.window.activeTextEditor.document);
+    void handleAutoOpenPreview(context, vscode.window.activeTextEditor.document);
   }
 
   // Show activation message
@@ -220,7 +243,8 @@ export function activate(context: vscode.ExtensionContext): void {
  */
 async function handleAutoOpenPreview(
   context: vscode.ExtensionContext,
-  document: vscode.TextDocument
+  document: vscode.TextDocument,
+  openContext: { fromMarkdownNavigation?: boolean; fromPreviewPanelNavigation?: boolean } = {}
 ): Promise<void> {
   // Read configuration
   const config = vscode.workspace.getConfiguration('intelligentMarkdown');
@@ -242,6 +266,17 @@ async function handleAutoOpenPreview(
       return;
     }
 
+    // If user navigated from one markdown to another via links, keep current preview
+    // to avoid disruptive preview switching when reading overview/index docs.
+    if (
+      (openContext.fromMarkdownNavigation || openContext.fromPreviewPanelNavigation) &&
+      currentPreviewPanel &&
+      currentPreviewDocUri &&
+      currentPreviewDocUri !== document.uri.toString()
+    ) {
+      return;
+    }
+
     // Delay opening to let editor finish loading
     setTimeout(() => {
       void openPreviewForDocument(context, document);
@@ -250,6 +285,12 @@ async function handleAutoOpenPreview(
   }
 
   // Source file flow: read header annotation and auto-open mapped Markdown preview
+  // If source was opened immediately from preview interactions (probe/source jump),
+  // keep current preview stable and do not switch to mapped markdown.
+  if (openContext.fromPreviewPanelNavigation) {
+    return;
+  }
+
   const mappedMarkdownPath = resolveMappedMarkdownPath(document);
   if (!mappedMarkdownPath) {
     return;
@@ -461,6 +502,13 @@ async function openPreviewForDocument(
     if (currentPreviewPanel === panel) {
       currentPreviewPanel = undefined;
       currentPreviewDocUri = undefined;
+    }
+  });
+
+  // Track preview panel focus to detect "opened from preview" navigation flows.
+  panel.onDidChangeViewState((e) => {
+    if (e.webviewPanel.active) {
+      lastPreviewFocusAt = Date.now();
     }
   });
 
