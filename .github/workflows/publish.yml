@@ -49,6 +49,12 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
+      - name: Publish to Open VSX Registry
+        run: npx ovsx publish config-md-${{ steps.get_version.outputs.VERSION }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}
+        env:
+          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
+        continue-on-error: true  # Don't fail release if Open VSX is not configured
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -60,8 +66,8 @@ jobs:
             This release has been automatically published to the VS Code Marketplace.
             
             **Installation:**
-            - Search for "config.md" in VS Code Extensions
-            - Or visit: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+            - VS Code: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+            - CodeBuddy / Open VSX: https://open-vsx.org/extension/liubai01/config-md
             
             **What's Changed:**
             See below for automatically generated release notes.
@@ -71,9 +77,10 @@ jobs:
       - name: Notify success
         if: success()
         run: |
-          echo "✅ Successfully published v${{ steps.get_version.outputs.VERSION }} to VS Code Marketplace"
-          echo "📦 GitHub Release created: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.VERSION }}"
-          echo "🌐 Marketplace: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md"
+          echo "✅ Successfully published v${{ steps.get_version.outputs.VERSION }}"
+          echo "📦 GitHub Release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.VERSION }}"
+          echo "🌐 VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md"
+          echo "🌐 Open VSX (CodeBuddy): https://open-vsx.org/extension/liubai01/config-md"
 
       - name: Notify failure
         if: failure()

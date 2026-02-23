@@ -28,6 +28,14 @@ This document describes the standard release process for the config.md VS Code e
    - Go to: https://github.com/liubai01/IntelligentMarkdown/settings/actions
    - Ensure "Read and write permissions" is enabled
 
+4. **Open VSX Registry (for CodeBuddy / VSCodium)** — optional but recommended
+   - Create an [Eclipse account](https://accounts.eclipse.org/user/register) (use same GitHub username)
+   - Log in to [open-vsx.org](https://open-vsx.org/) with GitHub, sign the Publisher Agreement
+   - Create an [access token](https://open-vsx.org/user-settings/tokens)
+   - Create namespace: `npx ovsx create-namespace liubai01 -p YOUR_TOKEN`
+   - Add GitHub secret: `OPEN_VSX_TOKEN` = your token
+   - See [Publishing Extensions · eclipse/openvsx Wiki](https://github.com/eclipse/openvsx/wiki/Publishing-Extensions)
+
 ## Release Process
 
 ### Step 1: Update Version Number
@@ -156,6 +164,12 @@ Examples:
 2. Check GitHub Actions is enabled
 3. Verify `VSCE_PAT` secret exists and is valid
 
+### Open VSX Publish Fails (CodeBuddy)
+
+1. Create namespace first: `npx ovsx create-namespace liubai01 -p YOUR_TOKEN`
+2. Verify `OPEN_VSX_TOKEN` secret is set in GitHub
+3. Ensure Publisher Agreement is signed at [open-vsx.org](https://open-vsx.org/user-settings/profile)
+
 ## Security Notes
 
 - ⚠️ **Never commit PAT tokens** to the repository
@@ -165,7 +179,8 @@ Examples:
 
 ## Useful Links
 
-- **Marketplace Page**: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+- **VS Code Marketplace**: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+- **Open VSX (CodeBuddy)**: https://open-vsx.org/extension/liubai01/config-md
 - **Publisher Dashboard**: https://marketplace.visualstudio.com/manage/publishers/liubai01
 - **GitHub Releases**: https://github.com/liubai01/IntelligentMarkdown/releases
 - **GitHub Actions**: https://github.com/liubai01/IntelligentMarkdown/actions
@@ -180,6 +195,7 @@ When helping with releases, ensure:
 - [ ] Version commit is pushed to master
 - [ ] Git tag matches package.json version (with 'v' prefix)
 - [ ] Tag is pushed to trigger GitHub Actions
+- [ ] `OPEN_VSX_TOKEN` secret set (optional, for CodeBuddy)
 - [ ] Never expose or commit PAT tokens
 - [ ] `.vscode-pat` remains git-ignored
 - [ ] `.vscodeignore` excludes sensitive files

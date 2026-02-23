@@ -24,10 +24,11 @@ When you push a tag (e.g., `v0.4.2`):
 3. ✅ Compiles production build
 4. ✅ Packages extension (.vsix)
 5. ✅ Publishes to VS Code Marketplace
-6. ✅ Creates GitHub Release with notes
-7. ✅ Attaches .vsix file to release
+6. ✅ Publishes to Open VSX Registry (CodeBuddy) — if `OPEN_VSX_TOKEN` is set
+7. ✅ Creates GitHub Release with notes
+8. ✅ Attaches .vsix file to release
 
-**Wait 5-10 minutes** → New version live on Marketplace!
+**Wait 5-10 minutes** → New version live on both marketplaces!
 
 ## First Time Setup
 
@@ -40,11 +41,16 @@ Only needed once:
    - Secret name: `VSCE_PAT`
    - Secret value: Your PAT token
 
+3. **Open VSX (CodeBuddy)**: [open-vsx.org](https://open-vsx.org/) → Settings → Access Tokens
+   - Create token, add as `OPEN_VSX_TOKEN` in GitHub Secrets
+   - First time: `npx ovsx create-namespace liubai01 -p YOUR_TOKEN`
+
 ## Monitoring
 
 - **GitHub Actions**: https://github.com/liubai01/IntelligentMarkdown/actions
 - **Releases**: https://github.com/liubai01/IntelligentMarkdown/releases
-- **Marketplace**: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+- **VS Code Marketplace**: https://marketplace.visualstudio.com/items?itemName=liubai01.config-md
+- **Open VSX (CodeBuddy)**: https://open-vsx.org/extension/liubai01/config-md
 
 ## Common Issues
 
