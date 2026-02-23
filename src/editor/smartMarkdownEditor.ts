@@ -17,6 +17,7 @@ import { JsonPatcher } from '../core/patcher/jsonPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
 import { ParsedWizardBlock, WizardStep, WizardVariable } from '../types';
+import MarkdownIt = require('markdown-it');
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
@@ -26,6 +27,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private luaLinker: LuaLinker;
   private pathResolver: PathResolver;
   private probeScanner: ProbeScanner;
+  private markdownIt: MarkdownIt;
   /** Code block indent normalization cache (rebuilt on each render) */
   private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
   /** Whether the extension is running inside Cursor IDE */
@@ -38,6 +40,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
     this.probeScanner = new ProbeScanner();
+    this.markdownIt = this.createMarkdownRenderer();
   }
 
   public async resolveCustomTextEditor(
@@ -92,6 +95,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             break;
           case 'refresh':
             await this.updateWebview(document, webviewPanel.webview);
+            break;
+          case 'openMarkdownSource':
+            await this.handleOpenMarkdownSource(document.uri);
             break;
         }
       },
@@ -478,6 +484,46 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
+   * Open/reveal markdown source editor and flash highlight.
+   * If already open in a recent tab group, reuse that group.
+   */
+  private async handleOpenMarkdownSource(markdownUri: vscode.Uri): Promise<void> {
+    try {
+      const targetColumn = this.findOpenEditorColumn(markdownUri) ?? vscode.ViewColumn.One;
+      const sourceDoc = await vscode.workspace.openTextDocument(markdownUri);
+      const editor = await vscode.window.showTextDocument(sourceDoc, {
+        viewColumn: targetColumn,
+        preserveFocus: false,
+        preview: false
+      });
+
+      // Select and reveal first non-empty line to give clear visual focus.
+      let lineIndex = 0;
+      for (let i = 0; i < sourceDoc.lineCount; i++) {
+        if (sourceDoc.lineAt(i).text.trim() !== '') {
+          lineIndex = i;
+          break;
+        }
+      }
+      const lineRange = sourceDoc.lineAt(lineIndex).range;
+      editor.selection = new vscode.Selection(lineRange.start, lineRange.end);
+      editor.revealRange(lineRange, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+
+      const pulse = vscode.window.createTextEditorDecorationType({
+        backgroundColor: 'rgba(255, 215, 0, 0.18)',
+        borderRadius: '4px',
+        isWholeLine: true
+      });
+      editor.setDecorations(pulse, [lineRange]);
+      setTimeout(() => pulse.dispose(), 1200);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        vscode.l10n.t('Unable to open Markdown source: {0}', error instanceof Error ? error.message : String(error))
+      );
+    }
+  }
+
+  /**
    * Normalize indentation: extract and remove common indent prefix from non-first lines
    * First line unchanged (usually function keyword, no leading indent)
    */
@@ -588,6 +634,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 <body>
   <div class="container">
     <div class="toolbar">
+      <button onclick="openMarkdownSource()" title="${vscode.l10n.t('Open Markdown Source')}">📝 ${vscode.l10n.t('Open Source')}</button>
       <button onclick="refresh()" title="${vscode.l10n.t('Refresh')}">🔄 ${vscode.l10n.t('Refresh')}</button>
     </div>
     <div class="content">
@@ -598,7 +645,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   <script src="${mermaidScriptUri}"></script>
   <script src="${tabulatorScriptUri}"></script>
   <script>
-    ${this.getScript(linkedBlocks, wizardBlocks)}
+    ${this.getScript(linkedBlocks, wizardBlocks, documentPath)}
   </script>
 </body>
 </html>`;
@@ -615,11 +662,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   ): string {
     let html = markdownText;
 
-    // Step 1: Replace config blocks with placeholders to avoid Markdown conversion affecting HTML
+    // Step 1: Replace special blocks with HTML placeholders to avoid markdown reflow.
+    // Using real HTML placeholders keeps markdown-it from wrapping placeholders in <p>.
     const placeholders: Map<string, string> = new Map();
     for (let i = 0; i < linkedBlocks.length; i++) {
       const block = linkedBlocks[i];
-      const placeholder = `__CONFIG_BLOCK_PLACEHOLDER_${i}__`;
+      const placeholder = `<div data-config-placeholder="${i}"></div>`;
       const controlHtml = this.renderConfigControl(block);
       placeholders.set(placeholder, controlHtml);
       html = html.replace(block.rawText, placeholder);
@@ -628,7 +676,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     // Step 1.1: Replace wizard blocks with placeholders
     for (let i = 0; i < wizardBlocks.length; i++) {
       const wizard = wizardBlocks[i];
-      const placeholder = `__WIZARD_BLOCK_PLACEHOLDER_${i}__`;
+      const placeholder = `<div data-wizard-placeholder="${i}"></div>`;
       const wizardHtml = this.renderWizardBlock(wizard, i, documentPath);
       placeholders.set(placeholder, wizardHtml);
       html = html.replace(wizard.rawText, placeholder);
@@ -644,7 +692,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     while ((match = mermaidRegex.exec(html)) !== null) {
       const fullMatch = match[0];
       const mermaidCode = match[1].trim();
-      const placeholder = `__MERMAID_BLOCK_PLACEHOLDER_${mermaidIndex}__`;
+      const placeholder = `<div data-mermaid-placeholder="${mermaidIndex}"></div>`;
       const mermaidHtml = this.renderMermaidBlock(mermaidCode, mermaidIndex, mdDir);
       placeholders.set(placeholder, mermaidHtml);
       html = html.replace(fullMatch, placeholder);
@@ -656,8 +704,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     // Step 1.6: Resolve probe:// links to clickable HTML links
     html = this.resolveProbeLinks(html, mdDir);
 
-    // Step 2: Markdown conversion
-    html = this.simpleMarkdownToHtml(html);
+    // Step 2: Markdown conversion via standard parser
+    html = this.markdownIt.render(html);
 
     // Step 3: Replace placeholders back to actual HTML controls
     for (const [placeholder, controlHtml] of placeholders) {
@@ -665,6 +713,36 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     }
 
     return html;
+  }
+
+  /**
+   * Create markdown-it renderer for standard Markdown parsing.
+   * Keep HTML enabled because we intentionally inject placeholder/probe HTML fragments.
+   */
+  private createMarkdownRenderer(): MarkdownIt {
+    const md = new MarkdownIt({
+      html: true,
+      linkify: true,
+      breaks: false,
+      typographer: false
+    });
+
+    const defaultHeadingOpen = md.renderer.rules.heading_open;
+    md.renderer.rules.heading_open = (tokens: any[], idx: number, options: any, env: any, self: any) => {
+      const inline = tokens[idx + 1];
+      if (inline && inline.type === 'inline') {
+        const slug = this.slugify(inline.content);
+        if (slug) {
+          tokens[idx].attrSet('id', slug);
+        }
+      }
+      if (defaultHeadingOpen) {
+        return defaultHeadingOpen(tokens, idx, options, env, self);
+      }
+      return self.renderToken(tokens, idx, options);
+    };
+
+    return md;
   }
 
   /**
@@ -1210,9 +1288,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         const escapedPath = target.filePath.replace(/\\/g, '\\\\');
         const relPath = path.relative(mdDir, target.filePath).replace(/\\/g, '/');
         const copyContext = `${relPath}:${target.line} (${probeLink.probeName})`;
-        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line)}">📍 ${this.escapeHtml(probeLink.displayText)}</a><span class="probe-copy-btn" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${vscode.l10n.t('Copy reference for AI (Ctrl+V to paste)')}">📋</span></span>`;
+        const jumpTitle = this.escapeHtml(vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line));
+        const copyTitle = this.escapeHtml(vscode.l10n.t('Copy reference for AI (Ctrl+V to paste)'));
+        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${jumpTitle}">📍 ${this.escapeHtml(probeLink.displayText)}</a><span class="probe-copy-btn" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${copyTitle}">📋</span></span>`;
       } else {
-        replacement = `<span class="probe-link-broken" title="${vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath)}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
+        const brokenTitle = this.escapeHtml(vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath));
+        replacement = `<span class="probe-link-broken" title="${brokenTitle}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
       }
 
       text = text.substring(0, probeLink.matchStart) + replacement + text.substring(probeLink.matchEnd);
@@ -1264,8 +1345,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     }
 
     // Build copy context for AI assistant
+    const safeCurrentValue = block.type === 'code'
+      ? '(function)'
+      : this.formatValue(block.currentValue);
     const copyContext = block.linkStatus === 'ok'
-      ? `[Config] ${block.key} = ${block.type === 'code' ? '(function)' : block.currentValue ?? ''} | File: ${block.file}, Line: ${block.luaNode?.loc.start.line || '?'}`
+      ? `[Config] ${String(block.key)} = ${safeCurrentValue} | File: ${String(block.file)}, Line: ${block.luaNode?.loc.start.line || '?'}`
       : `[Config] ${block.key} | ${block.linkError || 'unlinked'}`;
 
     return `
@@ -1677,13 +1761,18 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
    * Format value
    */
   private formatValue(value: any): string {
-    if (value === null || value === undefined) {
-      return 'nil';
+    try {
+      if (value === null || value === undefined) {
+        return 'nil';
+      }
+      if (typeof value === 'object') {
+        const serialized = JSON.stringify(value);
+        return serialized ?? '[object]';
+      }
+      return String(value);
+    } catch {
+      return '[unserializable]';
     }
-    if (typeof value === 'object') {
-      return JSON.stringify(value);
-    }
-    return String(value);
   }
 
   /**
@@ -1978,7 +2067,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
       .range-hint {
         font-size: 11px;
-        color: var(--color-fg-muted);
+        color: var(--vscode-editor-foreground, var(--color-fg-default));
+        opacity: 0.78;
       }
 
       /* ========== 数字输入控件 ========== */
@@ -2088,7 +2178,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         justify-content: space-between;
         margin-top: 4px;
         font-size: 11px;
-        color: var(--color-fg-muted);
+        color: var(--vscode-editor-foreground, var(--color-fg-default));
+        opacity: 0.82;
       }
 
       .slider-value {
@@ -2782,6 +2873,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         animation: wizardFadeIn 0.3s ease;
       }
 
+      /* Avoid replaying wizard entrance animation after full webview refreshes */
+      .no-wizard-replay .wizard-step {
+        animation: none !important;
+      }
+
       @keyframes wizardFadeIn {
         from { opacity: 0; transform: translateX(20px); }
         to { opacity: 1; transform: translateX(0); }
@@ -2980,7 +3076,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   /**
    * Get script
    */
-  private getScript(linkedBlocks: LinkedConfigBlock[], _wizardBlocks: ParsedWizardBlock[] = []): string {
+  private getScript(linkedBlocks: LinkedConfigBlock[], _wizardBlocks: ParsedWizardBlock[] = [], documentPath: string = ''): string {
     // Create block data mapping (including code block normalization info)
     const blockDataMap: Record<string, any> = {};
     for (const block of linkedBlocks) {
@@ -3012,6 +3108,154 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     return `
       const vscode = acquireVsCodeApi();
       const blockData = ${JSON.stringify(blockDataMap)};
+      const markdownSourcePath = ${JSON.stringify(documentPath)};
+
+      /* ========== Wizard UI State Persistence ========== */
+      function readUiState() {
+        return vscode.getState() || {};
+      }
+
+      function writeUiState(state) {
+        vscode.setState(state || {});
+      }
+
+      function readWizardState(wizardId) {
+        var state = readUiState();
+        var map = state.wizardStates || {};
+        return map[wizardId] || null;
+      }
+
+      function writeWizardState(wizardId, wizardState) {
+        var state = readUiState();
+        if (!state.wizardStates) state.wizardStates = {};
+        state.wizardStates[wizardId] = wizardState;
+        writeUiState(state);
+      }
+
+      function clearWizardState(wizardId) {
+        var state = readUiState();
+        if (!state.wizardStates) return;
+        delete state.wizardStates[wizardId];
+        writeUiState(state);
+      }
+
+      function applyWizardAnimationPolicy() {
+        var state = readUiState();
+        if (state.wizardAnimationPlayed) {
+          document.body.classList.add('no-wizard-replay');
+        } else {
+          state.wizardAnimationPlayed = true;
+          writeUiState(state);
+        }
+      }
+
+      function getWizardSteps(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return [];
+        var data = {};
+        try { data = JSON.parse(wizardEl.getAttribute('data-wizard') || '{}'); } catch(e) {}
+        return data.steps || [];
+      }
+
+      function collectWizardInputValues(wizardId) {
+        var steps = getWizardSteps(wizardId);
+        var values = {};
+        steps.forEach(function(step, i) {
+          var input = document.getElementById(wizardId + '-input-' + i);
+          if (!input) return;
+          if (step.type === 'boolean') {
+            values[String(i)] = !!input.checked;
+          } else {
+            values[String(i)] = input.value;
+          }
+        });
+        return values;
+      }
+
+      function findActiveWizardStep(wizardId) {
+        var steps = getWizardSteps(wizardId);
+        for (var i = 0; i < steps.length; i++) {
+          var stepEl = document.getElementById(wizardId + '-step-' + i);
+          if (stepEl && stepEl.style.display !== 'none') {
+            return i;
+          }
+        }
+        return 0;
+      }
+
+      function persistWizardState(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var previewEl = document.getElementById(wizardId + '-preview');
+        var resultEl = document.getElementById(wizardId + '-result');
+        writeWizardState(wizardId, {
+          activeStep: findActiveWizardStep(wizardId),
+          previewVisible: !!(previewEl && previewEl.style.display !== 'none'),
+          resultVisible: !!(resultEl && resultEl.style.display !== 'none'),
+          inputValues: collectWizardInputValues(wizardId)
+        });
+      }
+
+      function restoreWizardState(wizardId) {
+        var wizardEl = document.getElementById(wizardId);
+        if (!wizardEl) return;
+        var state = readWizardState(wizardId);
+        if (!state) return;
+
+        var steps = getWizardSteps(wizardId);
+        var total = steps.length;
+        if (!total) return;
+
+        // Restore input values first
+        var inputValues = state.inputValues || {};
+        steps.forEach(function(step, i) {
+          var input = document.getElementById(wizardId + '-input-' + i);
+          if (!input) return;
+          if (!(String(i) in inputValues)) return;
+          var v = inputValues[String(i)];
+          if (step.type === 'boolean') {
+            input.checked = !!v;
+            var label = input.closest('.wizard-checkbox');
+            var text = label ? label.querySelector('span') : null;
+            if (text) text.textContent = input.checked ? 'true' : 'false';
+          } else {
+            input.value = String(v);
+          }
+        });
+
+        // Restore visible panel/step
+        var previewEl = document.getElementById(wizardId + '-preview');
+        var resultEl = document.getElementById(wizardId + '-result');
+        var activeStep = Math.max(0, Math.min(total - 1, Number(state.activeStep) || 0));
+
+        if (resultEl) {
+          resultEl.style.display = state.resultVisible ? 'block' : 'none';
+        }
+
+        if (state.previewVisible) {
+          for (var i = 0; i < total; i++) {
+            var stepEl = document.getElementById(wizardId + '-step-' + i);
+            if (stepEl) stepEl.style.display = 'none';
+          }
+          if (previewEl) previewEl.style.display = 'block';
+          wizardUpdateProgress(wizardId, total - 1);
+          return;
+        }
+
+        if (previewEl) previewEl.style.display = 'none';
+        for (var i = 0; i < total; i++) {
+          var stepEl = document.getElementById(wizardId + '-step-' + i);
+          if (stepEl) stepEl.style.display = i === activeStep ? 'block' : 'none';
+        }
+        wizardUpdateProgress(wizardId, activeStep);
+      }
+
+      function restoreAllWizardStates() {
+        var blocks = document.querySelectorAll('.wizard-block[id]');
+        blocks.forEach(function(el) {
+          restoreWizardState(el.id);
+        });
+      }
 
       /* ========== 通用控件函数 ========== */
       function updateValue(blockId) {
@@ -3387,6 +3631,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         vscode.postMessage({ type: 'refresh' });
       }
 
+      function openMarkdownSource() {
+        vscode.postMessage({
+          type: 'openMarkdownSource',
+          file: markdownSourcePath
+        });
+      }
+
       /* ========== Wizard Functions ========== */
 
       /** Navigate to next wizard step */
@@ -3397,6 +3648,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (currentEl) currentEl.style.display = 'none';
         if (nextEl) nextEl.style.display = 'block';
         wizardUpdateProgress(wizardId, nextStep);
+        persistWizardState(wizardId);
       }
 
       /** Navigate to previous wizard step */
@@ -3407,6 +3659,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         if (currentEl) currentEl.style.display = 'none';
         if (prevEl) prevEl.style.display = 'block';
         wizardUpdateProgress(wizardId, prevStep);
+        persistWizardState(wizardId);
       }
 
       /** Update progress dots */
@@ -3495,6 +3748,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           if (stepEl) stepEl.style.display = 'none';
         });
         previewEl.style.display = 'block';
+        persistWizardState(wizardId);
       }
 
       /** Hide preview and go back to last step */
@@ -3510,6 +3764,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         var lastEl = document.getElementById(wizardId + '-step-' + lastIdx);
         if (lastEl) lastEl.style.display = 'block';
         wizardUpdateProgress(wizardId, lastIdx);
+        persistWizardState(wizardId);
       }
 
       /** Confirm and execute wizard — post message to extension */
@@ -3572,6 +3827,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         });
         var lines = wizardEl.querySelectorAll('.wizard-progress-line');
         lines.forEach(function(line) { line.classList.add('done'); });
+        persistWizardState(wizardId);
       }
 
       /** Show wizard execution result */
@@ -3605,6 +3861,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
             + '</div>';
         }
         resultEl.style.display = 'block';
+        persistWizardState(wizardId);
       }
 
       /** Restart wizard — reset to initial state */
@@ -3627,7 +3884,28 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         });
         // Reset progress
         wizardUpdateProgress(wizardId, 0);
+        clearWizardState(wizardId);
       }
+
+      // Persist wizard input state continuously (so non-wizard updates don't lose progress)
+      document.addEventListener('input', function(event) {
+        var target = event.target;
+        if (!target || !target.id) return;
+        var match = String(target.id).match(/^(wizard-\\d+)-input-\\d+$/);
+        if (!match) return;
+        persistWizardState(match[1]);
+      });
+      document.addEventListener('change', function(event) {
+        var target = event.target;
+        if (!target || !target.id) return;
+        var match = String(target.id).match(/^(wizard-\\d+)-input-\\d+$/);
+        if (!match) return;
+        persistWizardState(match[1]);
+      });
+
+      // Restore state after DOM/script re-created by extension refresh
+      applyWizardAnimationPolicy();
+      restoreAllWizardStates();
     `;
   }
 }

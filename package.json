@@ -131,6 +131,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^20.10.0",
     "@types/tabulator-tables": "^6.3.1",
     "@types/vscode": "^1.74.0",
@@ -161,6 +162,7 @@
     "codemirror": "^6.0.2",
     "jsonc-parser": "^3.3.1",
     "luaparse": "^0.3.1",
+    "markdown-it": "^14.1.1",
     "mermaid": "^11.12.2",
     "tabulator-tables": "^6.3.1",
     "yaml": "^2.3.4"

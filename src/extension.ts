@@ -307,6 +307,41 @@ function resolveMappedMarkdownPath(document: vscode.TextDocument): string | null
     }
   }
 
+  // Fallback: auto-discover by naming convention in the same folder
+  const byName = discoverConfigMarkdownByName(sourcePath);
+  if (byName) {
+    return byName;
+  }
+
+  return null;
+}
+
+/**
+ * Auto-discover mapped config markdown by filename convention.
+ * Priority:
+ *   1) <sourceBaseName>.config.md
+ *   2) If source name ends with "_config", also try <nameWithoutConfig>.config.md
+ *      Example: game_json_config.json -> game_json.config.md
+ */
+function discoverConfigMarkdownByName(sourcePath: string): string | null {
+  const dir = path.dirname(sourcePath);
+  const ext = path.extname(sourcePath);
+  const baseName = path.basename(sourcePath, ext);
+
+  const candidates: string[] = [];
+  candidates.push(path.join(dir, `${baseName}.config.md`));
+
+  const configSuffixMatch = baseName.match(/^(.*)_config$/i);
+  if (configSuffixMatch && configSuffixMatch[1]) {
+    candidates.push(path.join(dir, `${configSuffixMatch[1]}.config.md`));
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
   return null;
 }
 
