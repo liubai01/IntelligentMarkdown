@@ -30,6 +30,7 @@ This index helps you navigate the up-to-date docs for `IntelligentMarkdown`.
 ## Engineering Docs
 
 - [Architecture](./architecture.md): extension entrypoints, core modules, messaging, and caching behavior.
+- [Troubleshooting](./TROUBLESHOOTING.md): known issues and debugging notes (e.g. CodeBuddy Add to Chat).
 
 ## Release and Operations
 

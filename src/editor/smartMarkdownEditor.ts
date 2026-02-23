@@ -30,12 +30,31 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   private markdownIt: MarkdownIt;
   /** Code block indent normalization cache (rebuilt on each render) */
   private codeNormCache: Map<string, { normalized: string; baseIndent: string }> = new Map();
-  /** Whether the extension is running inside Cursor IDE */
-  private readonly isCursorIDE: boolean;
+  /** Whether "Add to Chat" should be enabled in the webview toolbar */
+  private supportsChatAddFile = false;
+  /** Whether chat support has been resolved */
+  private chatSupportResolved = false;
+  /** Command(s) to open chat composer (if supported) */
+  private chatOpenCommandIds: string[] = [];
+  /** Ordered commands to add file into chat */
+  private addFileToChatCommandIds: string[] = [];
+  /** Whether to keep trying all add-to-chat commands after success */
+  private forceTryAllAddToChatCommands = false;
+  /** Chat debug output channel */
+  private readonly outputChannel: vscode.OutputChannel;
+  /** Whether debug hint has been shown */
+  private chatDebugNotified = false;
+
+
+
+
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.isCursorIDE = vscode.env.appName.toLowerCase().includes('cursor');
+    this.outputChannel = vscode.window.createOutputChannel('config.md');
+    this.context.subscriptions.push(this.outputChannel);
     this.configParser = new ConfigBlockParser();
+
+
     this.wizardParser = new WizardBlockParser();
     this.luaLinker = new LuaLinker();
     this.pathResolver = new PathResolver();
@@ -149,10 +168,128 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const linkedBlocks = await this.luaLinker.linkBlocks(blocks, document.uri.fsPath);
     const wizardBlocks = this.wizardParser.parseMarkdown(text);
 
+    await this.ensureChatSupportResolved();
     webview.html = this.getHtmlContent(webview, text, linkedBlocks, document.uri.fsPath, wizardBlocks);
+
 
     // Phase 2: Send heavy block data asynchronously for progressive loading
     this.sendDeferredBlockData(webview, linkedBlocks);
+  }
+
+  /**
+   * Resolve whether the host IDE supports adding files to chat.
+   */
+  private async ensureChatSupportResolved(force = false): Promise<void> {
+    if (this.chatSupportResolved && !force) {
+      return;
+    }
+    this.chatSupportResolved = true;
+
+
+    const appName = vscode.env.appName.toLowerCase();
+    const isCursor = appName.includes('cursor');
+    let isCodeBuddy = appName.includes('codebuddy') || appName.includes('coding copilot') || appName.includes('codingcopilot');
+
+    try {
+      const commands = await vscode.commands.getCommands(true);
+      if (!isCodeBuddy) {
+        isCodeBuddy = commands.some(c => c.startsWith('tencentcloud.codingcopilot'));
+      }
+      const hasChatOpen = commands.includes('workbench.action.chat.open');
+      const hasChatOpenNew = commands.includes('workbench.action.chat.openInNewTab');
+      const hasChatOpenEditor = commands.includes('workbench.action.chat.openInEditor');
+      const hasCodeBuddyOpen = commands.includes('CodeBuddy.codebuddy-open');
+      const hasCodeBuddyGenieOpen = commands.includes('CodeBuddy.genie.open');
+      const hasComposerAdd = commands.includes('composer.addfilestocomposer');
+      const hasChatAddAction = commands.includes('workbench.action.chat.addToChatAction');
+      const hasCodeBuddyGenieAdd = commands.includes('tencentcloud.codingcopilot.addToChat');
+      const hasCodeBuddyIdeAdd = commands.includes('tencentcloud.codingcopilot.ide.addToChat');
+      const hasCodeBuddyWrapper = commands.includes('CodeBuddy.addToChat');
+
+      this.chatOpenCommandIds = [];
+      if (hasCodeBuddyOpen) { this.chatOpenCommandIds.push('CodeBuddy.codebuddy-open'); }
+      if (hasCodeBuddyGenieOpen) { this.chatOpenCommandIds.push('CodeBuddy.genie.open'); }
+      if (hasChatOpen) { this.chatOpenCommandIds.push('workbench.action.chat.open'); }
+      if (hasChatOpenNew) { this.chatOpenCommandIds.push('workbench.action.chat.openInNewTab'); }
+      if (hasChatOpenEditor) { this.chatOpenCommandIds.push('workbench.action.chat.openInEditor'); }
+
+      this.addFileToChatCommandIds = [];
+      if (hasCodeBuddyGenieAdd) { this.addFileToChatCommandIds.push('tencentcloud.codingcopilot.addToChat'); }
+      if (hasCodeBuddyIdeAdd) { this.addFileToChatCommandIds.push('tencentcloud.codingcopilot.ide.addToChat'); }
+      if (hasCodeBuddyWrapper) { this.addFileToChatCommandIds.push('CodeBuddy.addToChat'); }
+      if (hasChatAddAction) { this.addFileToChatCommandIds.push('workbench.action.chat.addToChatAction'); }
+      if (hasComposerAdd) { this.addFileToChatCommandIds.push('composer.addfilestocomposer'); }
+
+      this.forceTryAllAddToChatCommands = isCodeBuddy;
+      this.supportsChatAddFile = this.addFileToChatCommandIds.length > 0;
+      this.logChatDebug(`Chat env resolved. appName=${appName}, chatOpen=${this.chatOpenCommandIds.join(',') || 'none'}, addCommands=${this.addFileToChatCommandIds.join(',') || 'none'}`);
+
+      this.discoverChatExtensions();
+      return;
+    } catch (error) {
+      // Fall back to appName heuristics when command discovery fails
+      this.supportsChatAddFile = isCursor || isCodeBuddy;
+      this.chatOpenCommandIds = ['workbench.action.chat.open'];
+      if (isCodeBuddy) {
+        this.chatOpenCommandIds.unshift('CodeBuddy.codebuddy-open', 'CodeBuddy.genie.open');
+      }
+      this.addFileToChatCommandIds = [];
+      if (isCodeBuddy) {
+        this.addFileToChatCommandIds.push('tencentcloud.codingcopilot.ide.addToChat');
+        this.addFileToChatCommandIds.push('CodeBuddy.addToChat');
+      }
+      if (isCursor) {
+        this.addFileToChatCommandIds.push('composer.addfilestocomposer');
+      }
+      this.forceTryAllAddToChatCommands = isCodeBuddy;
+      this.logChatDebug(`Chat env fallback. appName=${appName}, addCommands=${this.addFileToChatCommandIds.join(',') || 'none'}, error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Discover chat-related extensions and log their command/menu contributions
+   * so we can understand the expected API for addToChat.
+   */
+  private discoverChatExtensions(): void {
+    this.logChatDebug('--- Extension Discovery ---');
+    for (const ext of vscode.extensions.all) {
+      const id = ext.id.toLowerCase();
+      if (!id.includes('codingcopilot') && !id.includes('codebuddy') && !id.includes('tencentcloud')) {
+        continue;
+      }
+
+      this.logChatDebug(`Ext: ${ext.id}, path=${ext.extensionPath}, active=${ext.isActive}`);
+
+      const contributes = ext.packageJSON?.contributes;
+      if (!contributes) { continue; }
+
+      if (Array.isArray(contributes.commands)) {
+        for (const cmd of contributes.commands) {
+          if (cmd.command?.includes('addToChat') || cmd.command?.includes('sendMessage') || cmd.command?.includes('chat')) {
+            this.logChatDebug(`  cmd: ${JSON.stringify(cmd)}`);
+          }
+        }
+      }
+
+      if (contributes.menus && typeof contributes.menus === 'object') {
+        for (const [menuId, items] of Object.entries(contributes.menus)) {
+          if (!Array.isArray(items)) { continue; }
+          for (const item of items as Array<{ command?: string; when?: string; group?: string }>) {
+            if (item.command?.includes('addToChat') || item.command?.includes('chat')) {
+              this.logChatDebug(`  menu[${menuId}]: ${JSON.stringify(item)}`);
+            }
+          }
+        }
+      }
+
+      if (ext.isActive && ext.exports) {
+        try {
+          const keys = Object.keys(ext.exports);
+          this.logChatDebug(`  exports: [${keys.join(', ')}]`);
+        } catch { /* ignore */ }
+      }
+    }
+    this.logChatDebug('--- End Discovery ---');
   }
 
   /**
@@ -160,6 +297,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    * Each block is sent with a small delay so the UI can render progressively.
    */
   private sendDeferredBlockData(
+
     webview: vscode.Webview,
     linkedBlocks: LinkedConfigBlock[]
   ): void {
@@ -405,12 +543,14 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Handle "Add to Chat" — open a new Cursor chat with the file as @file context.
+   * Handle "Add to Chat" — attach the file as @file context in the AI chat panel.
    *
-   * Strategy:
-   *   1. workbench.action.chat.open  →  creates a fresh composer tab (100% reliable)
-   *   2. composer.addfilestocomposer  →  attaches the file as native @file context badge
-   *   3. Fallback: copy @file reference to clipboard
+   * Strategy (CodeBuddy):
+   *   tencentcloud.codingcopilot.addToChat  →  genie extension handler that accepts vscode.Uri
+   * Strategy (Cursor):
+   *   composer.addfilestocomposer  →  native @file badge
+   * Fallback:
+   *   copy @file reference to clipboard
    */
   private async handleAddFileToChat(
     message: { absoluteFilePath: string; workspaceRelativePath: string }
@@ -422,33 +562,64 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         return;
       }
 
+      if (this.addFileToChatCommandIds.length === 0) {
+        await this.ensureChatSupportResolved(true);
+      }
+
       const fileUri = vscode.Uri.file(filePath);
       const fileName = path.basename(filePath);
+      const wsRel = message.workspaceRelativePath || fileName;
 
-      // Step 1: Create a new chat tab (always works, gives us a clean composer)
-      try {
-        await vscode.commands.executeCommand('workbench.action.chat.open');
-      } catch {
-        // ignore — composer may already be focused
+      this.logChatDebug(`=== AddToChat start ===`);
+      this.logChatDebug(`file=${filePath}, wsRel=${wsRel}, cmds=[${this.addFileToChatCommandIds}]`);
+
+      for (const cmd of this.addFileToChatCommandIds) {
+        try {
+          await vscode.commands.executeCommand(cmd, fileUri);
+          this.logChatDebug(`${cmd}(uri) → OK`);
+          return;
+        } catch (e) {
+          this.logChatDebug(`${cmd}(uri) → error: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
 
-      // Brief delay to let the composer initialise
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Clipboard fallback
+      await vscode.env.clipboard.writeText(`@${wsRel}`);
+      this.logChatDebug('[clipboard] copied');
+      vscode.window.showInformationMessage(
+        vscode.l10n.t('Copied @{0} — paste into chat with Ctrl+V', wsRel)
+      );
+      this.logChatDebug('=== AddToChat end ===');
 
-      // Step 2: Add the file as native @file context (creates the badge)
-      try {
-        await vscode.commands.executeCommand('composer.addfilestocomposer', fileUri);
-      } catch {
-        // If addfilestocomposer fails, fall back to clipboard
-        const wsRel = message.workspaceRelativePath || fileName;
-        await vscode.env.clipboard.writeText(`@${wsRel}`);
-        vscode.window.showInformationMessage(
-          vscode.l10n.t('File reference copied — press Ctrl+V to paste: @{0}', wsRel)
-        );
-      }
+
     } catch (error) {
       vscode.window.showErrorMessage(vscode.l10n.t('Failed to add file to chat'));
     }
+  }
+
+
+  /**
+   * Log chat diagnostics to output channel.
+   */
+  private logChatDebug(message: string): void {
+    this.outputChannel.appendLine(`[ChatDebug] ${message}`);
+  }
+
+  private formatChatPayload(payload: unknown): string {
+    if (payload instanceof vscode.Uri) {
+      return payload.toString();
+    }
+    if (typeof payload === 'string') {
+      return payload;
+    }
+    if (payload && typeof payload === 'object') {
+      try {
+        return JSON.stringify(payload);
+      } catch {
+        return '[object]';
+      }
+    }
+    return String(payload);
   }
 
   /**
@@ -457,6 +628,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    * Returns undefined if not found.
    */
   private findOpenEditorColumn(uri: vscode.Uri): vscode.ViewColumn | undefined {
+
     // 1. Check visible editors (fastest path)
     const visibleEditor = vscode.window.visibleTextEditors.find(
       editor => editor.document.uri.fsPath === uri.fsPath
@@ -1615,10 +1787,11 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy @file reference to clipboard (Ctrl+V to paste into chat)')}">
       📋 ${t('Copy @file')}
     </button>
-    ${this.isCursorIDE ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to Cursor AI chat as @file reference')}">
+    ${this.supportsChatAddFile ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to chat as @file reference')}">
       🤖 ${t('Add to Chat')}
     </button>` : ''}
     ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
+
   </div>
   <div class="code-cm-container deferred-loading" id="${blockId}-cm">
     <div class="loading-skeleton" id="${blockId}-cm-skeleton">
