@@ -9,15 +9,15 @@ It will:
 4. GitHub Actions will then automatically publish to the VS Code Marketplace
 
 ```lua-wizard
-file: ./../../package.json
+file: ./../../../package.json
 action: run
 label: Publish New Version
 icon: 🚀
-cwd: ./../..
+cwd: ./../../..
 variables:
   current_version:
     type: json
-    file: ./../../package.json
+    file: ./../../../package.json
     path: version
 commands: |
   npm version {{version}} --no-git-tag-version

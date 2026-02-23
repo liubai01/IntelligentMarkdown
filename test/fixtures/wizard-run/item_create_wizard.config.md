@@ -7,7 +7,7 @@ This file manages in-game item configurations.
 Configure weapon attributes below:
 
 ```lua-config
-file: ./items_config.lua
+file: ../lua-config/items_config.lua
 key: ItemsConfig.Weapons[1].attack
 type: slider
 label: Wooden Sword Attack
@@ -16,7 +16,7 @@ max: 100
 ```
 
 ```lua-config
-file: ./items_config.lua
+file: ../lua-config/items_config.lua
 key: ItemsConfig.Weapons[2].attack
 type: slider
 label: Iron Sword Attack
@@ -29,7 +29,7 @@ max: 200
 Use the wizard below to create a new weapon and add it to the weapons list:
 
 ```lua-wizard
-file: ./items_config.lua
+file: ../lua-config/items_config.lua
 target: ItemsConfig.Weapons
 action: append
 label: Create New Weapon
@@ -71,7 +71,7 @@ steps:
 ## Potions
 
 ```lua-config
-file: ./items_config.lua
+file: ../lua-config/items_config.lua
 key: ItemsConfig.Potions
 type: table
 label: Potion List

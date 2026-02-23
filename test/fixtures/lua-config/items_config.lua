@@ -5,7 +5,7 @@
 ItemsConfig = {
     -- Weapon List
     Weapons = {
-        { id = 1001, name = "Wooden Sword", attack = 30, price = 50, stackable = true },
+        { id = 1001, name = "Wooden Sword", attack = 30, price = 50, stackable = false },
         { id = 1002, name = "Iron Sword", attack = 25, price = 200, stackable = true },
         { id = 1003, name = "Steel Sword", attack = 45, price = 500, stackable = true },
         { id = 1004, name = "Holy Blade", attack = 100, price = 2000, stackable = false },

@@ -7,7 +7,7 @@ This wizard helps you create and manage game tasks. Choose a task type below to 
 ### Main Story Tasks
 
 ```lua-config
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 key: TasksConfig.MainTasks
 type: table
 label: Main Story Tasks
@@ -25,7 +25,7 @@ columns:
 ### Daily Tasks
 
 ```lua-config
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 key: TasksConfig.DailyTasks
 type: table
 label: Daily Tasks
@@ -48,7 +48,7 @@ columns:
 > Use this wizard to create a new main story task and insert it into the configuration file.
 
 ```lua-wizard
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 target: TasksConfig.MainTasks
 action: append
 label: Create Main Story Task
@@ -101,7 +101,7 @@ steps:
 > Use this wizard to create a new daily task with time limit and repeat settings.
 
 ```lua-wizard
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 target: TasksConfig.DailyTasks
 action: append
 label: Create Daily Task
@@ -171,7 +171,7 @@ steps:
 ## Task System Settings
 
 ```lua-config
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 key: TasksConfig.Settings.MaxActiveTasks
 type: slider
 min: 1
@@ -181,7 +181,7 @@ label: Max Active Tasks
 ```
 
 ```lua-config
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 key: TasksConfig.Settings.DailyTaskRefreshHour
 type: number
 min: 0
@@ -190,7 +190,7 @@ label: Daily Task Refresh Hour (0-23)
 ```
 
 ```lua-config
-file: ./tasks_config.lua
+file: ../lua-config/tasks_config.lua
 key: TasksConfig.Settings.TaskExpMultiplier
 type: number
 min: 0.1

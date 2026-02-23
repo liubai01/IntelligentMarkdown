@@ -3,7 +3,7 @@
 This fixture demonstrates `lua-wizard` run mode with JSON-backed variables.
 
 ```lua-wizard
-file: ./game_json_config.json
+file: ../json-config/game_json_config.json
 action: run
 label: Validate JSON Config
 icon: 🧪
@@ -11,11 +11,11 @@ cwd: .
 variables:
   playerName:
     type: json
-    file: ./game_json_config.json
+    file: ../json-config/game_json_config.json
     path: GameConfig.Player.Name
   playerHp:
     type: json
-    file: ./game_json_config.json
+    file: ../json-config/game_json_config.json
     path: GameConfig.Player.MaxHealth
 commands: |
   echo Player={{playerName}}

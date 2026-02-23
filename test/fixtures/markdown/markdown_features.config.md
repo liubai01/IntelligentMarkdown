@@ -52,7 +52,7 @@ Task-style list (plugin-dependent):
 ## 5) Links
 
 - Inline link: [VS Code](https://code.visualstudio.com/)
-- Relative link: [Quest Config](./quest_system.config.md)
+- Relative link: [Quest Config](../lua-config/quest_system.config.md)
 
 ---
 
@@ -100,7 +100,7 @@ print("lua:", value)
 ## 9) Custom Config Block
 
 ```lua-config
-file: ./player_config.lua
+file: ../lua-config/player_config.lua
 key: PlayerConfig.BaseStats.HP
 type: slider
 range: [100, 5000]
@@ -113,7 +113,7 @@ label: Player HP
 ## 10) Wizard Block
 
 ```lua-wizard
-file: ./items_config.lua
+file: ../lua-config/items_config.lua
 target: ItemsConfig.Weapons
 action: append
 label: Create Test Weapon
@@ -161,9 +161,9 @@ flowchart LR
 
 ## 12) Probe Links
 
-[Jump to Quest Settings Definition](probe://./quest_system.lua#quest_settings)
+[Jump to Quest Settings Definition](probe://../lua-config/quest_system.lua#quest_settings)
 
-[Jump to Reward Table](probe://./quest_system.lua#reward_table)
+[Jump to Reward Table](probe://../lua-config/quest_system.lua#reward_table)
 
 ---
 
