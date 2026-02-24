@@ -7,7 +7,7 @@ Three action types are currently supported:
 
 - `append`: generate content from a template and append it to a Lua table
 - `run`: render commands from a template and execute them sequentially
-- `prompt`: generate a prompt from template variables and send it to Cursor chat
+- `prompt`: generate a prompt from template variables and send it to AI chat ([Cursor](https://www.cursor.com/) / [CodeBuddy](https://codebuddy.ai/))
 
 ## Quick Examples
 
@@ -77,7 +77,12 @@ steps:
 
 > `run` always asks for execution confirmation and logs output per command.
 
-### Generate a prompt for Cursor chat
+### Generate a prompt for AI chat
+
+The `prompt` action works with AI-powered editors that support chat integration, including:
+
+- [Cursor](https://www.cursor.com/) — AI-first code editor
+- [CodeBuddy](https://codebuddy.ai/) — Tencent's AI coding assistant
 
 ````markdown
 ```lua-wizard
@@ -118,13 +123,13 @@ steps:
       - { value: "prod", label: "Production" }
     default: staging
   - field: confirm
-    label: I want to generate a Cursor prompt
+    label: I want to generate an AI prompt
     type: boolean
     default: true
 ```
 ````
 
-> `prompt` renders the `prompt` template with step inputs and dynamic variables, then sends the result to Cursor chat for AI-assisted execution.
+> `prompt` renders the `prompt` template with step inputs and dynamic variables, then sends the result to the AI chat panel (Cursor or CodeBuddy) for AI-assisted execution.
 
 ## Field Reference
 
@@ -198,7 +203,8 @@ This makes `{{appVersion}}` available during rendering.
 ### prompt
 
 - Renders the `prompt` template by substituting step inputs and dynamic `variables`
-- Sends the rendered prompt text to Cursor chat for AI-assisted execution
+- Sends the rendered prompt text to the AI chat panel for AI-assisted execution
+- Compatible with [Cursor](https://www.cursor.com/) and [CodeBuddy](https://codebuddy.ai/)
 - Supports `variables` for injecting values from external JSON files
 - Useful for code generation, review checklists, and AI-powered workflows
 
