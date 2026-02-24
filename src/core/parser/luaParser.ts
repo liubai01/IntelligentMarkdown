@@ -50,6 +50,26 @@ export class LuaParser {
         const nextNode = this.findInTable(currentNode, segment);
 
         if (!nextNode) {
+          // Fallback: look for external MemberExpression assignment
+          // e.g. Config_UGC_Copilot.Copilot_MessageTypeConfig = { ... }
+          const externalPath = segments.slice(0, i + 1).map(s => s.value).join('.');
+          const externalNode = this.findMemberAssignment(externalPath);
+          if (externalNode) {
+            currentNode = externalNode;
+            // Continue traversing remaining segments if any
+            let found = true;
+            for (let j = i + 1; j < segments.length; j++) {
+              const next = this.findInTable(currentNode, segments[j]);
+              if (!next) {
+                found = false;
+                break;
+              }
+              currentNode = next;
+            }
+            if (found) {
+              return { success: true, node: this.extractValueNode(currentNode), astNode: currentNode };
+            }
+          }
           const pathSoFar = segments.slice(0, i + 1).map(s => s.value).join('.');
           return { success: false, error: `Path not found: ${pathSoFar}` };
         }
@@ -375,6 +395,27 @@ export class LuaParser {
       return [...this.getMemberExpressionPath(node.base), node.identifier.name];
     }
     return [];
+  }
+
+  /**
+   * Find external MemberExpression assignment value
+   * Matches patterns like: A.B.C = { ... } or A.B.C = value
+   */
+  private findMemberAssignment(targetPath: string): any {
+    for (const statement of this.ast.body) {
+      if (statement.type === 'AssignmentStatement') {
+        for (let i = 0; i < statement.variables.length; i++) {
+          const variable = statement.variables[i];
+          if (variable.type === 'MemberExpression') {
+            const varPath = this.getMemberExpressionPath(variable).join('.');
+            if (varPath === targetPath && statement.init[i]) {
+              return statement.init[i];
+            }
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**
