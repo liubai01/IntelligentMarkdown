@@ -195,7 +195,11 @@ export class ProbeScanner {
    */
   private resolveByAst(absolutePath: string, name: string): ProbeTarget | null {
     try {
-      const content = fs.readFileSync(absolutePath, 'utf-8');
+      let content = fs.readFileSync(absolutePath, 'utf-8');
+      // Strip UTF-8 BOM if present (luaparse cannot handle BOM)
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
       const parser = new LuaParser(content);
 
       // Try function lookup first (covers function A.B(), A.B = function(), etc.)
