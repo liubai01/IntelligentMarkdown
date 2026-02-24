@@ -3,10 +3,11 @@
 `lua-wizard` is the current Markdown syntax identifier for wizard blocks (kept for compatibility).  
 At the product level, this is called a **Wizard Block**.
 It collects inputs and performs an action.
-Two action types are currently supported:
+Three action types are currently supported:
 
 - `append`: generate content from a template and append it to a Lua table
 - `run`: render commands from a template and execute them sequentially
+- `prompt`: generate a prompt from template variables and send it to Cursor chat
 
 ## Quick Examples
 
@@ -76,17 +77,67 @@ steps:
 
 > `run` always asks for execution confirmation and logs output per command.
 
+### Generate a prompt for Cursor chat
+
+````markdown
+```lua-wizard
+file: ./game_config.json
+action: prompt
+label: Generate Release Prompt
+icon: 🤖
+prompt: |
+  You are helping with a game release verification.
+
+  Context:
+  - Player Name: {{playerName}}
+  - Max HP: {{playerHp}}
+  - Build Environment: {{env}}
+
+  Tasks:
+  1) Check release risk for current config.
+  2) Propose 3 validation commands for smoke testing.
+  3) Return a short release checklist in markdown.
+
+variables:
+  playerName:
+    type: json
+    file: ./game_config.json
+    path: GameConfig.Player.Name
+  playerHp:
+    type: json
+    file: ./game_config.json
+    path: GameConfig.Player.MaxHealth
+
+steps:
+  - field: env
+    label: Target Environment
+    type: select
+    options:
+      - { value: "dev", label: "Development" }
+      - { value: "staging", label: "Staging" }
+      - { value: "prod", label: "Production" }
+    default: staging
+  - field: confirm
+    label: I want to generate a Cursor prompt
+    type: boolean
+    default: true
+```
+````
+
+> `prompt` renders the `prompt` template with step inputs and dynamic variables, then sends the result to Cursor chat for AI-assisted execution.
+
 ## Field Reference
 
 ### Top-level fields
 
 | Field | Required | Description |
 |---|---|---|
-| `file` | required for `append`, recommended for `run` | Reference file path (relative to Markdown file) |
-| `action` | no | `append` or `run`, defaults to `append` |
+| `file` | required for `append`, recommended for `run` and `prompt` | Reference file path (relative to Markdown file) |
+| `action` | no | `append`, `run`, or `prompt`, defaults to `append` |
 | `target` | required for `append` | Target Lua table path, e.g. `ItemsConfig.Weapons` |
 | `template` | required for `append` | Template with `{{variable}}` placeholders |
 | `commands` | required for `run` | Multiline command template |
+| `prompt` | required for `prompt` | Multiline prompt template with `{{variable}}` placeholders |
 | `cwd` | no | Working directory for `run`, defaults to Markdown directory |
 | `label` | no | Wizard title |
 | `icon` | no | Wizard icon |
@@ -143,6 +194,13 @@ This makes `{{appVersion}}` available during rendering.
 - Ignores empty lines and comment lines starting with `#`
 - Stops at first failed command
 - Writes logs to the `Wizard Commands` output channel
+
+### prompt
+
+- Renders the `prompt` template by substituting step inputs and dynamic `variables`
+- Sends the rendered prompt text to Cursor chat for AI-assisted execution
+- Supports `variables` for injecting values from external JSON files
+- Useful for code generation, review checklists, and AI-powered workflows
 
 ## Troubleshooting
 
