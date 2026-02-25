@@ -118,6 +118,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           case 'openMarkdownSource':
             await this.handleOpenMarkdownSource(document.uri);
             break;
+          case 'openLink':
+            await this.handleOpenLink(message.href, document.uri);
+            break;
         }
       },
       undefined,
@@ -691,6 +694,48 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     } catch (error) {
       vscode.window.showErrorMessage(
         vscode.l10n.t('Unable to open Markdown source: {0}', error instanceof Error ? error.message : String(error))
+      );
+    }
+  }
+
+  /**
+   * Handle link clicks from the webview preview.
+   * Resolves relative paths against the current markdown document directory,
+   * then opens the target in VS Code (files) or the system browser (http URLs).
+   */
+  private async handleOpenLink(href: string, markdownUri: vscode.Uri): Promise<void> {
+    try {
+      // External URLs → open in system browser
+      if (/^https?:\/\//i.test(href)) {
+        await vscode.env.openExternal(vscode.Uri.parse(href));
+        return;
+      }
+
+      // Resolve relative path against the markdown file's directory
+      const mdDir = path.dirname(markdownUri.fsPath);
+      const targetPath = path.resolve(mdDir, href);
+
+      if (!fs.existsSync(targetPath)) {
+        vscode.window.showWarningMessage(
+          vscode.l10n.t('File not found: {0}', href)
+        );
+        return;
+      }
+
+      const targetUri = vscode.Uri.file(targetPath);
+      const targetColumn = this.findOpenEditorColumn(targetUri)
+        ?? this.findOpenEditorColumn(markdownUri)
+        ?? vscode.ViewColumn.One;
+
+      const doc = await vscode.workspace.openTextDocument(targetUri);
+      await vscode.window.showTextDocument(doc, {
+        viewColumn: targetColumn,
+        preserveFocus: false,
+        preview: false
+      });
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        vscode.l10n.t('Unable to open link: {0}', error instanceof Error ? error.message : String(error))
       );
     }
   }
@@ -4159,6 +4204,29 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       // Restore state after DOM/script re-created by extension refresh
       applyWizardAnimationPolicy();
       restoreAllWizardStates();
+
+      // Intercept normal link clicks so markdown links (e.g. [text](./other.md)) work
+      document.addEventListener('click', function(event) {
+        var anchor = event.target;
+        while (anchor && anchor.tagName !== 'A') {
+          anchor = anchor.parentElement;
+        }
+        if (!anchor) return;
+        var href = anchor.getAttribute('href');
+        if (!href) return;
+        // Skip javascript: links (already handled by inline onclick)
+        if (href.startsWith('javascript:')) return;
+        // Skip anchor-only links (in-page navigation)
+        if (href.startsWith('#')) {
+          var targetId = href.slice(1);
+          var targetEl = document.getElementById(targetId);
+          if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth' });
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        vscode.postMessage({ type: 'openLink', href: href });
+      });
     `;
   }
 }

@@ -37,4 +37,5 @@ Fixtures are now physically organized by category folders.
 ## Markdown Rendering
 
 - `markdown/markdown_features.config.md`
+- `markdown/links.config.md` + `markdown/link_target.md`
 
