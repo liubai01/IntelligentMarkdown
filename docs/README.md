@@ -13,6 +13,7 @@ This index helps you navigate the up-to-date docs for `IntelligentMarkdown`.
 
 - [Documentation Home](./overview.md): high-level understanding of the product.
 - [Product Strategy](./product-strategy.md): long-term positioning and evolution plan.
+- [Ecosystem Positioning Research](./ecosystem-positioning-research.md): objective analysis of `config.md` as a Cursor/CodeBuddy ecosystem enhancement layer.
 - [Terminology](./terminology.md): naming conventions and canonical terms.
 
 ## Feature Docs
