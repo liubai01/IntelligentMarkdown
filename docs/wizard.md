@@ -165,7 +165,7 @@ steps:
 ### Dynamic variables (`variables`)
 
 `variables` reads values from external files and injects them into template rendering.  
-Currently supported type: `json`.
+Currently supported types: `json`, `config`.
 
 ```yaml
 variables:
@@ -176,6 +176,44 @@ variables:
 ```
 
 This makes `{{appVersion}}` available during rendering.
+
+#### Read from existing `lua-config` blocks (`type: config`)
+
+You can reference values already defined in the same markdown page, including:
+
+- values linked from Lua/JSON source files
+- values persisted directly in markdown (`storage: markdown`)
+
+```yaml
+variables:
+  hp:
+    type: config
+    path: GameConfig.Player.MaxHealth
+```
+
+When keys conflict, bind a stable markdown-level alias in the config block:
+
+```lua-config
+file: ./game_config.lua
+key: GameConfig.Player.MaxHealth
+markdown-key: player-hp
+type: number
+```
+
+Then use that alias in wizard variables:
+
+```yaml
+variables:
+  hp:
+    type: config
+    markdown-key: player-hp
+```
+
+Rules:
+
+- `type: config` supports either `path` or `markdown-key`
+- if both are provided, `markdown-key` takes priority
+- default behavior reuses `key` when `markdown-key` is not specified
 
 ## Template Rules
 

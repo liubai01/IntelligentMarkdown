@@ -61,6 +61,9 @@ The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
 
 | Field      | Type                | Applies To               | Description                      |
 |------------|---------------------|--------------------------|----------------------------------|
+| `storage`  | `"source"\|"markdown"` | all                   | Where values are persisted. Default: `"source"` |
+| `markdown-key` | `string`        | all                      | Optional stable key for wizard/config references when `key` collisions exist |
+| `value`    | `any`               | all (`storage: markdown`) | Current value stored in markdown |
 | `label`    | `string`            | all                      | Display label (defaults to last segment of `key`) |
 | `default`  | `any`               | all                      | Default value                    |
 | `min`      | `number`            | `number`, `slider`       | Minimum value                    |
@@ -71,6 +74,28 @@ The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
 | `readonly` | `boolean`           | all                      | Make the control read-only       |
 | `options`  | `SelectOption[]`    | `select`                 | Dropdown options list            |
 | `columns`  | `TableColumn[]`     | `table`                  | Column definitions for table     |
+
+---
+
+## Storage Modes
+
+By default, config values are linked to an external source file (`storage: source`).
+
+You can also store values directly in the current `.config.markdown` block with:
+
+```lua-config
+storage: markdown
+key: LocalSettings.DebugEnabled
+type: boolean
+value: true
+label: Debug Enabled
+```
+
+Notes:
+
+- `storage: markdown` does **not** require `file`
+- Value updates are written back to the same `lua-config` block (`value:` field)
+- `key` remains required and is used as the block identity
 
 ---
 

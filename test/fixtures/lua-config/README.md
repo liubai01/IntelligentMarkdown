@@ -9,4 +9,5 @@ Included members:
 - `quest_system.config.md` + `quest_system.lua`
 - `game_events.config.md` + `game_events.lua`
 - `perf_test.config.md` + `perf_test_config.lua`
+- `markdown_storage.config.md` (no source file, `storage: markdown` local persistence)
 

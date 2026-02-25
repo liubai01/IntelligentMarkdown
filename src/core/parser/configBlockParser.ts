@@ -34,6 +34,8 @@ export class ConfigBlockParser {
       if (parseResult.success && parseResult.block) {
         blocks.push({
           ...parseResult.block,
+          startIndex,
+          endIndex,
           startLine,
           endLine,
           rawText: match[0]
@@ -57,8 +59,10 @@ export class ConfigBlockParser {
         return { success: false, error: 'Invalid config content' };
       }
 
+      const storage = parsed.storage === 'markdown' ? 'markdown' : 'source';
+
       // Validate required fields
-      if (!parsed.file) {
+      if (storage !== 'markdown' && !parsed.file) {
         return { success: false, error: 'Missing required field: file' };
       }
       if (!parsed.key) {
@@ -76,8 +80,11 @@ export class ConfigBlockParser {
 
       // Build config block
       const block: ConfigBlock = {
+        storage,
         file: parsed.file,
         key: parsed.key,
+        markdownKey: parsed['markdown-key'] || parsed.markdownKey,
+        value: parsed.value,
         type: parsed.type,
         label: parsed.label,
         default: parsed.default,
@@ -121,7 +128,7 @@ export class ConfigBlockParser {
     const errors: string[] = [];
 
     // Validate file path
-    if (!block.file || typeof block.file !== 'string') {
+    if (block.storage !== 'markdown' && (!block.file || typeof block.file !== 'string')) {
       errors.push('file must be a valid file path');
     }
 

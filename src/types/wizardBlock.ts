@@ -19,11 +19,13 @@ export interface WizardOption {
 /** Dynamic variable definition (resolved at render time) */
 export interface WizardVariable {
   /** Variable type */
-  type: 'json';
+  type: 'json' | 'config';
   /** File path (relative to markdown) */
-  file: string;
-  /** JSON path to value (dot-separated, e.g. "version" or "config.name") */
-  path: string;
+  file?: string;
+  /** JSON path or config key path */
+  path?: string;
+  /** Optional markdown key for config variables; defaults to config `key` */
+  markdownKey?: string;
 }
 
 /** A single wizard step definition */

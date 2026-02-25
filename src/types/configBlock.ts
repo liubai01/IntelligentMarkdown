@@ -35,10 +35,16 @@ export interface TableColumn {
 
 /** Config block definition */
 export interface ConfigBlock {
+  /** Storage mode: source file (default) or markdown-local */
+  storage?: 'source' | 'markdown';
   /** Lua file relative path */
-  file: string;
+  file?: string;
   /** Lua variable path */
   key: string;
+  /** Optional markdown-level variable key used by wizard/config references */
+  markdownKey?: string;
+  /** Value stored in markdown when storage=markdown */
+  value?: any;
   /** Control type */
   type: ConfigType;
   /** Display label */
@@ -65,6 +71,10 @@ export interface ConfigBlock {
 
 /** Parsed config block (with position info) */
 export interface ParsedConfigBlock extends ConfigBlock {
+  /** Start character index in Markdown */
+  startIndex?: number;
+  /** End character index in Markdown */
+  endIndex?: number;
   /** Start line number in Markdown */
   startLine: number;
   /** End line number in Markdown */

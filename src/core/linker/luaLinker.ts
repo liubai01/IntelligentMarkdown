@@ -70,8 +70,18 @@ export class LuaLinker {
    * Link a single config block
    */
   private async linkSingleBlock(block: ParsedConfigBlock, baseDir: string): Promise<LinkedConfigBlock> {
+    const storage = block.storage === 'markdown' ? 'markdown' : 'source';
+    if (storage === 'markdown') {
+      return {
+        ...block,
+        absoluteFilePath: '',
+        currentValue: block.value !== undefined ? block.value : block.default,
+        linkStatus: 'ok'
+      };
+    }
+
     // Resolve source file path
-    const absolutePath = this.pathResolver.resolve(baseDir, block.file);
+    const absolutePath = this.pathResolver.resolve(baseDir, block.file || '');
     const isJsonFile = /\.(json|jsonc)$/i.test(absolutePath);
 
     // Create base linked block

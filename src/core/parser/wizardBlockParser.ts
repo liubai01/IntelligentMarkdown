@@ -114,17 +114,26 @@ export class WizardBlockParser {
         variables = {};
         for (const [key, raw] of Object.entries(parsed.variables)) {
           const varDef = raw as any;
-          if (!varDef || !varDef.type || !varDef.file || !varDef.path) {
-            return { success: false, error: `Variable "${key}" missing required fields (type, file, path)` };
+          if (!varDef || !varDef.type) {
+            return { success: false, error: `Variable "${key}" missing required field: type` };
           }
-          const validVarTypes = ['json'];
+          const validVarTypes = ['json', 'config'];
           if (!validVarTypes.includes(varDef.type)) {
             return { success: false, error: `Variable "${key}" has invalid type: ${varDef.type}` };
           }
+
+          if (varDef.type === 'json' && (!varDef.file || !varDef.path)) {
+            return { success: false, error: `Variable "${key}" (json) missing required fields (file, path)` };
+          }
+          if (varDef.type === 'config' && !varDef.path && !varDef['markdown-key'] && !varDef.markdownKey) {
+            return { success: false, error: `Variable "${key}" (config) requires one of: path / markdown-key` };
+          }
+
           variables[key] = {
             type: varDef.type,
             file: varDef.file,
             path: varDef.path,
+            markdownKey: varDef['markdown-key'] || varDef.markdownKey
           };
         }
       }

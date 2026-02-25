@@ -18,6 +18,7 @@ import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
 import { ParsedWizardBlock, WizardStep, WizardVariable } from '../types';
 import MarkdownIt = require('markdown-it');
+import * as yaml from 'yaml';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
@@ -319,23 +320,26 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     heavyBlocks.forEach(({ blockId, block }, index) => {
       setTimeout(() => {
         if (block.type === 'table') {
-          const tableData = block.luaNode?.tableData;
-          if (!tableData || tableData.length === 0) { return; }
+          const sourceRows = block.storage === 'markdown'
+            ? (Array.isArray(block.currentValue) ? block.currentValue : [])
+            : (block.luaNode?.tableData?.map(row => row.data) || []);
+          if (!sourceRows || sourceRows.length === 0) { return; }
 
-          const rowData = tableData.map(row => row.data);
-          const rowLocations = tableData.map(row => ({
-            line: row.rowLoc?.start.line || 0,
-            file: block.absoluteFilePath || ''
-          }));
+          const rowLocations = block.storage === 'markdown'
+            ? sourceRows.map(() => ({ line: 0, file: '' }))
+            : (block.luaNode?.tableData?.map(row => ({
+              line: row.rowLoc?.start.line || 0,
+              file: block.absoluteFilePath || ''
+            })) || []);
 
           webview.postMessage({
             type: 'initBlock',
             blockType: 'table',
             blockId,
             columns: block.columns,
-            rows: rowData,
+            rows: sourceRows,
             rowLocations,
-            rowCount: tableData.length
+            rowCount: sourceRows.length
           });
         } else if (block.type === 'code') {
           const normData = this.codeNormCache.get(blockId);
@@ -357,11 +361,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleUpdateValue(
     document: vscode.TextDocument,
-    message: { file: string; key: string; value: any; valueType: string }
+    message: { file?: string; key: string; value: any; valueType: string; blockId?: string; storage?: string }
   ): Promise<void> {
     try {
+      if (message.storage === 'markdown') {
+        await this.updateMarkdownBlockValue(document, message.blockId, message.value);
+        vscode.window.showInformationMessage(vscode.l10n.t('Updated {0} in markdown', message.key));
+        return;
+      }
+
       const mdDir = path.dirname(document.uri.fsPath);
-      const sourcePath = this.pathResolver.resolve(mdDir, message.file);
+      const sourcePath = this.pathResolver.resolve(mdDir, message.file || '');
       const isJsonFile = /\.(json|jsonc)$/i.test(sourcePath);
 
       if (!fs.existsSync(sourcePath)) {
@@ -411,11 +421,30 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleUpdateTableCell(
     document: vscode.TextDocument,
-    message: { file: string; key: string; rowIndex: number; colKey: string; value: any }
+    message: { file?: string; key: string; rowIndex: number; colKey: string; value: any; blockId?: string; storage?: string }
   ): Promise<void> {
     try {
+      if (message.storage === 'markdown') {
+        const current = await this.getMarkdownBlockValue(document, message.blockId);
+        if (!Array.isArray(current) || message.rowIndex < 0 || message.rowIndex >= current.length) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
+          return;
+        }
+        const row = current[message.rowIndex];
+        if (!row || typeof row !== 'object') {
+          vscode.window.showErrorMessage(vscode.l10n.t('Invalid row data at index: {0}', message.rowIndex));
+          return;
+        }
+        row[message.colKey] = message.value;
+        await this.updateMarkdownBlockValue(document, message.blockId, current);
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)
+        );
+        return;
+      }
+
       const mdDir = path.dirname(document.uri.fsPath);
-      const sourcePath = this.pathResolver.resolve(mdDir, message.file);
+      const sourcePath = this.pathResolver.resolve(mdDir, message.file || '');
       const isJsonFile = /\.(json|jsonc)$/i.test(sourcePath);
 
       if (!fs.existsSync(sourcePath)) {
@@ -894,7 +923,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     for (let i = 0; i < wizardBlocks.length; i++) {
       const wizard = wizardBlocks[i];
       const placeholder = `<div data-wizard-placeholder="${i}"></div>`;
-      const wizardHtml = this.renderWizardBlock(wizard, i, documentPath);
+      const wizardHtml = this.renderWizardBlock(wizard, i, documentPath, markdownText);
       placeholders.set(placeholder, wizardHtml);
       html = html.replace(wizard.rawText, placeholder);
     }
@@ -968,21 +997,64 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private resolveWizardVariables(
     variables: Record<string, WizardVariable> | undefined,
-    documentPath: string
+    documentPath: string,
+    markdownText: string
   ): Record<string, string> {
     const resolved: Record<string, string> = {};
     if (!variables) { return resolved; }
 
     const mdDir = path.dirname(documentPath);
+    const parsedConfigBlocks = this.configParser.parseMarkdown(markdownText);
+    const configLookup = new Map<string, any>();
+    const configLookupByMdKey = new Map<string, any>();
+
+    for (const b of parsedConfigBlocks) {
+      if (b.storage === 'markdown') {
+        const v = b.value !== undefined ? b.value : b.default;
+        configLookup.set(b.key, v);
+        if (b.markdownKey) {
+          configLookupByMdKey.set(b.markdownKey, v);
+        }
+      } else if (b.file) {
+        try {
+          const sourcePath = this.pathResolver.resolve(mdDir, b.file);
+          if (!fs.existsSync(sourcePath)) { continue; }
+          const sourceCode = fs.readFileSync(sourcePath, 'utf-8');
+          const isJson = /\.(json|jsonc)$/i.test(sourcePath);
+          if (isJson) {
+            const parser = new JsonParser(sourceCode);
+            const result = parser.findNodeByPath(b.key);
+            if (result.success && result.node) {
+              configLookup.set(b.key, result.node.value);
+              if (b.markdownKey) {
+                configLookupByMdKey.set(b.markdownKey, result.node.value);
+              }
+            }
+          } else {
+            const parser = new LuaParser(sourceCode);
+            const result = parser.findNodeByPath(b.key);
+            if (result.success && result.node) {
+              configLookup.set(b.key, result.node.value);
+              if (b.markdownKey) {
+                configLookupByMdKey.set(b.markdownKey, result.node.value);
+              }
+            }
+          }
+        } catch {
+          // ignore individual config resolution errors
+        }
+      }
+    }
+
     for (const [key, varDef] of Object.entries(variables)) {
       try {
         if (varDef.type === 'json') {
-          const filePath = this.pathResolver.resolve(mdDir, varDef.file);
+          const filePath = this.pathResolver.resolve(mdDir, varDef.file || '');
           if (fs.existsSync(filePath)) {
             const content = fs.readFileSync(filePath, 'utf-8');
             const json = JSON.parse(content);
             // Traverse dot-separated path
-            const parts = varDef.path.split('.');
+            const parts = (varDef.path || '').split('.');
             let val: any = json;
             for (const part of parts) {
               if (val && typeof val === 'object' && part in val) {
@@ -994,6 +1066,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             }
             resolved[key] = val !== undefined ? String(val) : '';
           }
+        } else if (varDef.type === 'config') {
+          const fromMdKey = varDef.markdownKey ? configLookupByMdKey.get(varDef.markdownKey) : undefined;
+          const fromPath = varDef.path ? configLookup.get(varDef.path) : undefined;
+          const val = fromMdKey !== undefined ? fromMdKey : fromPath;
+          resolved[key] = val !== undefined ? String(val) : '';
         }
       } catch {
         resolved[key] = '';
@@ -1017,7 +1094,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   /**
    * Render a wizard block as a multi-step form UI
    */
-  private renderWizardBlock(wizard: ParsedWizardBlock, index: number, documentPath: string): string {
+  private renderWizardBlock(wizard: ParsedWizardBlock, index: number, documentPath: string, markdownText: string): string {
     const wizardId = `wizard-${index}`;
     const icon = wizard.icon || (wizard.action === 'run' ? '🚀' : '🧙');
     const label = wizard.label || (wizard.action === 'run' ? vscode.l10n.t('Command Wizard') : vscode.l10n.t('Code Wizard'));
@@ -1029,7 +1106,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const absoluteFilePath = wizard.file ? this.pathResolver.resolve(mdDir, wizard.file) : '';
 
     // Resolve dynamic variables
-    const resolvedVars = this.resolveWizardVariables(wizard.variables, documentPath);
+    const resolvedVars = this.resolveWizardVariables(wizard.variables, documentPath, markdownText);
 
     // Apply resolved variables to step descriptions and defaults
     const processedSteps = wizard.steps.map(step => {
@@ -1199,6 +1276,19 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       return;
     }
 
+    const markdownPath = document.uri.fsPath;
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+    const markdownRel = workspaceRoot
+      ? path.relative(workspaceRoot, markdownPath).replace(/\\/g, '/')
+      : path.basename(markdownPath);
+    const sourceContext = [
+      `@file ${markdownRel}`,
+      'Target: update lua-config value blocks in this markdown file only.',
+      ''
+    ].join('\n');
+
+    const finalPrompt = `${sourceContext}${promptText}`;
+
     try {
       // Open chat first (best effort).
       try {
@@ -1224,7 +1314,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
 
       // Put prompt into clipboard, then auto-paste into the active chat composer.
-      await vscode.env.clipboard.writeText(promptText);
+      await vscode.env.clipboard.writeText(finalPrompt);
       // Small delay to ensure chat input is focused.
       await new Promise(resolve => setTimeout(resolve, 120));
       try {
@@ -1638,7 +1728,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     <span class="status-icon">${statusIcon}</span>
     <span class="config-label">${label}</span>
     <span class="config-key" title="${block.key}">${block.key}</span>
-    ${block.linkStatus === 'ok' ? `<button class="goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${vscode.l10n.t('Jump to source')}">📍</button>` : ''}
+    ${(block.linkStatus === 'ok' && block.storage !== 'markdown' && block.absoluteFilePath) ? `<button class="goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${vscode.l10n.t('Jump to source')}">📍</button>` : ''}
   </div>
   <div class="config-input">
     ${inputHtml}
@@ -1765,15 +1855,17 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       return `<span class="error-message">${t('Table type requires columns definition')}</span>`;
     }
 
-    // Use already linked table data
-    const tableData = block.luaNode?.tableData;
+    // Use linked table data (source mode) or markdown value (markdown mode)
+    const tableRows = block.storage === 'markdown'
+      ? (Array.isArray(block.currentValue) ? block.currentValue : [])
+      : (block.luaNode?.tableData?.map(row => row.data) || []);
 
-    if (!tableData || tableData.length === 0) {
+    if (!tableRows || tableRows.length === 0) {
       return `<div class="table-empty">${t('No data')}</div>`;
     }
 
     // Render a loading skeleton — actual data will be sent via postMessage (async)
-    const rowCount = tableData.length;
+    const rowCount = tableRows.length;
     const colCount = block.columns.length;
 
     // Generate skeleton rows for visual feedback
@@ -1832,10 +1924,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     <button class="code-btn code-copy-btn" onclick="copyCodeAsContext('${blockId}')" title="${t('Copy @file reference to clipboard (Ctrl+V to paste into chat)')}">
       📋 ${t('Copy @file')}
     </button>
-    ${this.supportsChatAddFile ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to chat as @file reference')}">
+    ${(this.supportsChatAddFile && block.storage !== 'markdown' && block.absoluteFilePath) ? `<button class="code-btn code-ai-btn" onclick="addFileToChat('${blockId}')" title="${t('Add source file to chat as @file reference')}">
       🤖 ${t('Add to Chat')}
     </button>` : ''}
-    ${block.linkStatus === 'ok' ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
+    ${(block.linkStatus === 'ok' && block.storage !== 'markdown' && block.absoluteFilePath) ? `<button class="code-btn code-goto-btn" onclick="gotoSource('${block.absoluteFilePath.replace(/\\/g, '\\\\')}', ${block.luaNode?.loc.start.line || 1})" title="${t('Jump to function in source file')}">📍 ${t('Go to Source')}</button>` : ''}
 
   </div>
   <div class="code-cm-container deferred-loading" id="${blockId}-cm">
@@ -1861,11 +1953,17 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
    */
   private async handleSaveCode(
     document: vscode.TextDocument,
-    message: { file: string; key: string; code: string; baseIndent: string }
+    message: { file?: string; key: string; code: string; baseIndent: string; blockId?: string; storage?: string }
   ): Promise<void> {
     try {
+      if (message.storage === 'markdown') {
+        await this.updateMarkdownBlockValue(document, message.blockId, message.code);
+        vscode.window.showInformationMessage(vscode.l10n.t('Saved {0} in markdown', message.key));
+        return;
+      }
+
       const mdDir = path.dirname(document.uri.fsPath);
-      const luaPath = this.pathResolver.resolve(mdDir, message.file);
+      const luaPath = this.pathResolver.resolve(mdDir, message.file || '');
 
       if (!fs.existsSync(luaPath)) {
         vscode.window.showErrorMessage(`文件不存在: ${luaPath}`);
@@ -1902,6 +2000,53 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         vscode.l10n.t('Save failed: {0}', error instanceof Error ? error.message : String(error))
       );
     }
+  }
+
+  private async getMarkdownBlockValue(document: vscode.TextDocument, blockId?: string): Promise<any> {
+    const block = this.findParsedBlockById(document, blockId);
+    if (!block) {
+      throw new Error(vscode.l10n.t('Config block not found in markdown'));
+    }
+    const parsed = this.parseConfigYaml(block.rawText);
+    return parsed.value;
+  }
+
+  private async updateMarkdownBlockValue(document: vscode.TextDocument, blockId: string | undefined, value: any): Promise<void> {
+    const block = this.findParsedBlockById(document, blockId);
+    if (!block || block.startIndex === undefined || block.endIndex === undefined) {
+      throw new Error(vscode.l10n.t('Config block not found in markdown'));
+    }
+
+    const parsed = this.parseConfigYaml(block.rawText);
+    parsed.storage = 'markdown';
+    parsed.value = value;
+
+    const yamlBody = yaml.stringify(parsed).trimEnd();
+    const newRaw = `\`\`\`lua-config\n${yamlBody}\n\`\`\``;
+
+    const original = document.getText();
+    const newText = original.slice(0, block.startIndex) + newRaw + original.slice(block.endIndex);
+    const edit = new vscode.WorkspaceEdit();
+    const fullRange = new vscode.Range(
+      document.positionAt(0),
+      document.positionAt(original.length)
+    );
+    edit.replace(document.uri, fullRange, newText);
+    await vscode.workspace.applyEdit(edit);
+    await document.save();
+  }
+
+  private findParsedBlockById(document: vscode.TextDocument, blockId?: string) {
+    const blocks = this.configParser.parseMarkdown(document.getText());
+    return blocks.find(b => this.generateBlockId(b as LinkedConfigBlock) === blockId);
+  }
+
+  private parseConfigYaml(rawText: string): Record<string, any> {
+    const content = rawText
+      .replace(/^```lua-config\s*\n?/, '')
+      .replace(/\n?```$/, '');
+    const parsed = yaml.parse(content);
+    return parsed && typeof parsed === 'object' ? parsed : {};
   }
 
   /**
@@ -2033,7 +2178,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   /**
    * Generate block ID
    */
-  private generateBlockId(block: LinkedConfigBlock): string {
+  private generateBlockId(block: { key: string }): string {
     return `block-${block.key.replace(/\./g, '-').replace(/\[|\]/g, '_')}`;
   }
 
@@ -3369,6 +3514,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         : block.file || '';
 
       blockDataMap[blockId] = {
+        blockId,
+        storage: block.storage || 'source',
         file: block.file,
         key: block.key,
         type: block.type,
@@ -3569,6 +3716,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
         vscode.postMessage({
           type: 'updateValue',
+          blockId: data.blockId,
+          storage: data.storage,
           file: data.file,
           key: data.key,
           value: value,
@@ -3589,6 +3738,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
         vscode.postMessage({
           type: 'updateTableCell',
+          blockId: data.blockId,
+          storage: data.storage,
           file: data.file,
           key: data.key,
           rowIndex: rowIndex,
@@ -3749,6 +3900,8 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
         vscode.postMessage({
           type: 'saveCode',
+          blockId: data.blockId,
+          storage: data.storage,
           file: data.file,
           key: data.key,
           code: code,
