@@ -291,13 +291,19 @@ async function handleAutoOpenPreview(
     return;
   }
 
-  const mappedMarkdownPath = resolveMappedMarkdownPath(document);
-  if (!mappedMarkdownPath) {
+  const mappedMarkdown = resolveMappedMarkdown(document);
+  if (!mappedMarkdown) {
     return;
   }
 
+  const mappedMarkdownPath = mappedMarkdown.path;
   const mappedUri = vscode.Uri.file(mappedMarkdownPath);
   if (currentPreviewPanel && currentPreviewDocUri === mappedUri.toString()) {
+    return;
+  }
+
+  const confirmed = await confirmOpenMappedMarkdown(document, mappedMarkdownPath, mappedMarkdown.reason);
+  if (!confirmed) {
     return;
   }
 
@@ -318,7 +324,9 @@ async function handleAutoOpenPreview(
  *   // @config-md: ./foo.config.md
  *   # @config-md: ./foo.config.md
  */
-function resolveMappedMarkdownPath(document: vscode.TextDocument): string | null {
+function resolveMappedMarkdown(
+  document: vscode.TextDocument
+): { path: string; reason: 'annotation' | 'byName' } | null {
   if (document.uri.scheme !== 'file') {
     return null;
   }
@@ -344,17 +352,46 @@ function resolveMappedMarkdownPath(document: vscode.TextDocument): string | null
       : path.resolve(path.dirname(sourcePath), rawPath);
 
     if (resolvedPath.toLowerCase().endsWith('.md') && fs.existsSync(resolvedPath)) {
-      return resolvedPath;
+      return { path: resolvedPath, reason: 'annotation' };
     }
   }
 
   // Fallback: auto-discover by naming convention in the same folder
   const byName = discoverConfigMarkdownByName(sourcePath);
   if (byName) {
-    return byName;
+    return { path: byName, reason: 'byName' };
   }
 
   return null;
+}
+
+/**
+ * Ask user to confirm before auto-opening mapped markdown preview.
+ */
+async function confirmOpenMappedMarkdown(
+  sourceDocument: vscode.TextDocument,
+  markdownPath: string,
+  reason: 'annotation' | 'byName'
+): Promise<boolean> {
+  const openAction = vscode.l10n.t('Open Preview');
+  const message = reason === 'annotation'
+    ? vscode.l10n.t(
+      'Detected mapped Markdown from @config-md for "{0}": "{1}". Open preview?',
+      path.basename(sourceDocument.fileName),
+      path.basename(markdownPath)
+    )
+    : vscode.l10n.t(
+      'Detected same-name config Markdown for "{0}": "{1}". Open preview?',
+      path.basename(sourceDocument.fileName),
+      path.basename(markdownPath)
+    );
+
+  const choice = await vscode.window.showInformationMessage(
+    message,
+    openAction
+  );
+
+  return choice === openAction;
 }
 
 /**
