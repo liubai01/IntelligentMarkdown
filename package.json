@@ -1,8 +1,8 @@
 {
   "name": "config-md",
   "displayName": "config.md",
-  "description": "Manage configuration through Markdown — visual config editor with embedded code blocks. Currently focused on Lua.",
-  "version": "0.6.8",
+  "description": "Markdown-native, plain-text config and spec workflows — visual editing + wizard prompt generation for local CI-style iteration.",
+  "version": "0.6.9",
   "publisher": "liubai01",
   "icon": "images/icon.png",
   "repository": {
@@ -23,6 +23,16 @@
     "code blocks",
     "config.md",
     "game development",
+    "wizard",
+    "prompt template",
+    "prompt generation",
+    "spec code",
+    "text configuration",
+    "plain text",
+    "markdown workflow",
+    "markdown-first",
+    "local ci",
+    "ai workflow",
     "mermaid",
     "diagrams"
   ],
@@ -34,8 +44,8 @@
     "theme": "dark"
   },
   "categories": [
-    "Other",
-    "Programming Languages",
+    "Chat",
+    "Testing",
     "Visualization"
   ],
   "activationEvents": [

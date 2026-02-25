@@ -5,7 +5,7 @@
 <h1 align="center">config.md</h1>
 
 <p align="center">
-  <strong>Manage configuration through Markdown — write docs, embed config blocks, edit visually.</strong>
+  <strong>Markdown-native and plain-text first — configure visually, generate wizard prompts, and iterate specs like local CI.</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ## 💡 What is config.md?
 
-**config.md** is a VS Code extension that lets you manage configuration through Markdown documents. Write human-readable docs with embedded config blocks, then edit values in a visual UI that writes back to source files.
+**config.md** is a VS Code extension for markdown-native, plain-text spec workflows. You can manage config with visual controls, generate structured prompts through `lua-wizard`, and run repeatable edit→review→apply loops like a local CI pipeline for content/spec changes.
 
 > 🎯 Product direction: language-agnostic config workflows with pluggable source adapters.
 > Today: strong Lua support + incremental JSON/JSONC support.
@@ -52,6 +52,12 @@ label: Maximum Health
 
 Open the preview panel, and you get an interactive visual editor — sliders, toggles, dropdowns — that syncs changes back to your source files in real time.
 
+### Why Plain Text First?
+
+- Keep everything in Markdown/text so spec, config, and prompt intent stay versionable and diff-friendly.
+- Scale to large text-based content (rules, design notes, release checklists, long prompt templates) without locking into proprietary formats.
+- Preserve an iterative workflow: update text spec → generate prompt/code with wizard → review diffs → apply.
+
 ---
 
 ## ✨ Features
@@ -66,6 +72,8 @@ Open the preview panel, and you get an interactive visual editor — sliders, to
 | 📊 **Table Editing** | Batch-edit arrays of objects in a spreadsheet-like interface |
 | 💻 **Function Editor** | Edit Lua functions in VS Code's native editor — with full IntelliSense, go-to-definition, and staged save |
 | 🤖 **AI Prompt Templating** | Build reusable `lua-wizard` prompt templates from config variables and step inputs, then send generated prompts directly into Cursor chat |
+| 🧠 **SpecCode Workflow** | Treat Markdown as executable spec: define constraints, generate prompts, and apply validated changes in a predictable loop |
+| ✅ **Local CI-style Iteration** | Iterate in short cycles (edit spec → generate prompt/code → review → apply), reducing accidental edits and drift |
 | 🌐 **Adapter Expansion** | Designed to evolve from Lua-first into language-agnostic config editing |
 
 ---
