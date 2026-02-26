@@ -51,7 +51,8 @@ async function renderAll(): Promise<void> {
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i] as HTMLElement;
-    const code = el.getAttribute('data-mermaid-code');
+    const rawCode = el.getAttribute('data-mermaid-code');
+    const code = rawCode ? normalizeEscapedNewlinesInMermaidStrings(rawCode) : rawCode;
     if (!code) { continue; }
 
     // Register probe click callback BEFORE rendering
@@ -81,6 +82,14 @@ async function renderAll(): Promise<void> {
       console.error('Mermaid render error:', err);
     }
   }
+}
+
+/**
+ * Convert escaped "\n" sequences inside Mermaid quoted strings to line breaks.
+ * This keeps the overall Mermaid syntax unchanged while making labels render as multi-line text.
+ */
+function normalizeEscapedNewlinesInMermaidStrings(code: string): string {
+  return code.replace(/(["'])(?:\\.|(?!\1).)*\1/g, (segment) => segment.replace(/\\n/g, '<br/>'));
 }
 
 /**

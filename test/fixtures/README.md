@@ -42,4 +42,5 @@ Fixtures are now physically organized by category folders.
 
 - `markdown/markdown_features.config.md`
 - `markdown/links.config.md` + `markdown/link_target.md`
+- `markdown/mermaid_escaped_newline.config.md`
 
