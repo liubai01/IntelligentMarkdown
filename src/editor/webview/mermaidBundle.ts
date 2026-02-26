@@ -97,7 +97,7 @@ function registerProbeCallback(
   try {
     const probeMap: Record<string, ProbeTarget> = JSON.parse(probeDataRaw);
 
-    // Register the callback globally so Mermaid can call it
+    // Backward-compatible callback (older preprocessed syntax): click <node> mermaidProbe_<index>
     (window as any)[`mermaidProbe_${diagramIndex}`] = function (nodeId: string) {
       const target = probeMap[nodeId];
       if (target && typeof (window as any).gotoProbe === 'function') {
@@ -105,11 +105,27 @@ function registerProbeCallback(
       }
     };
 
+    // Current callback mode: click <node> mermaidProbe_<index>_<sanitizedNodeId>
+    // Register one global callback function per node to avoid node-id collision
+    // across different diagrams that reuse generic IDs like A/B/C.
+    for (const [nodeId, target] of Object.entries(probeMap)) {
+      const callbackName = `mermaidProbe_${diagramIndex}_${sanitizeCallbackToken(nodeId)}`;
+      (window as any)[callbackName] = function () {
+        if (target && typeof (window as any).gotoProbe === 'function') {
+          (window as any).gotoProbe(target.file, target.line);
+        }
+      };
+    }
+
     return probeMap;
   } catch (err) {
     console.error('Failed to parse probe click data:', err);
     return null;
   }
+}
+
+function sanitizeCallbackToken(nodeId: string): string {
+  return String(nodeId || '').replace(/[^A-Za-z0-9_]/g, '_');
 }
 
 /**

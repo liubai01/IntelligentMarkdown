@@ -1705,12 +1705,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         // Use raw filePath — JSON.stringify/parse handles backslash escaping automatically.
         // Do NOT double-escape here, otherwise findOpenEditorColumn path comparison fails.
         clickMap[nodeId] = { file: resolved.filePath, line: resolved.line, target: targetName, fileName };
-        // Replace with Mermaid callback reference (unique per diagram)
-        return `click ${nodeId} mermaidProbe_${diagramIndex}`;
+        // Replace with Mermaid callback reference (unique per diagram + node)
+        const callbackName = `mermaidProbe_${diagramIndex}_${this.sanitizeMermaidCallbackToken(nodeId)}`;
+        return `click ${nodeId} ${callbackName}`;
       }
       // Unresolvable — remove the click directive to avoid Mermaid errors
       return '';
     });
+  }
+
+  private sanitizeMermaidCallbackToken(nodeId: string): string {
+    return String(nodeId || '').replace(/[^A-Za-z0-9_]/g, '_');
   }
 
   /**
