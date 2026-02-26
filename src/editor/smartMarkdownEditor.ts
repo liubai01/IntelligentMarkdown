@@ -1658,7 +1658,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private renderMermaidBlock(code: string, index: number, mdDir: string): string {
     // Pre-process probe click directives
-    const probeClickMap: Record<string, { file: string; line: number; target: string; fileName: string }> = {};
+    const probeClickMap: Record<string, { file: string; line: number; target: string; fileName: string; callback: string }> = {};
     const processedCode = this.processMermaidProbeClicks(code, index, mdDir, probeClickMap);
 
     const escapedCode = escapeHtml(processedCode)
@@ -1693,7 +1693,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     code: string,
     diagramIndex: number,
     mdDir: string,
-    clickMap: Record<string, { file: string; line: number; target: string; fileName: string }>
+    clickMap: Record<string, { file: string; line: number; target: string; fileName: string; callback: string }>
   ): string {
     // Match click directives with probe:// URLs (quoted)
     const probeClickRegex = /click\s+(\S+)\s+"probe:\/\/([^#"]+)#([^"]+)"(?:\s+"[^"]*")?/g;
@@ -1704,9 +1704,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         const fileName = path.basename(filePath);
         // Use raw filePath — JSON.stringify/parse handles backslash escaping automatically.
         // Do NOT double-escape here, otherwise findOpenEditorColumn path comparison fails.
-        clickMap[nodeId] = { file: resolved.filePath, line: resolved.line, target: targetName, fileName };
-        // Replace with Mermaid callback reference (unique per diagram + node)
         const callbackName = `mermaidProbe_${diagramIndex}_${this.sanitizeMermaidCallbackToken(nodeId)}`;
+        clickMap[nodeId] = { file: resolved.filePath, line: resolved.line, target: targetName, fileName, callback: callbackName };
+        // Replace with Mermaid callback reference (unique per diagram + node)
         return `click ${nodeId} ${callbackName}`;
       }
       // Unresolvable — remove the click directive to avoid Mermaid errors

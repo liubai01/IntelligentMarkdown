@@ -36,6 +36,7 @@ interface ProbeTarget {
   line: number;
   target: string;
   fileName: string;
+  callback?: string;
 }
 
 /**
@@ -109,7 +110,7 @@ function registerProbeCallback(
     // Register one global callback function per node to avoid node-id collision
     // across different diagrams that reuse generic IDs like A/B/C.
     for (const [nodeId, target] of Object.entries(probeMap)) {
-      const callbackName = `mermaidProbe_${diagramIndex}_${sanitizeCallbackToken(nodeId)}`;
+      const callbackName = target.callback || `mermaidProbe_${diagramIndex}_${sanitizeCallbackToken(nodeId)}`;
       (window as any)[callbackName] = function () {
         if (target && typeof (window as any).gotoProbe === 'function') {
           (window as any).gotoProbe(target.file, target.line);
