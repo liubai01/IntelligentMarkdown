@@ -69,6 +69,14 @@ Webview UI
   - Handles Webview messages (value updates, table cell updates, wizard actions, refresh)
   - Defers heavy block initialization (`table`, `code`) for better first paint
   - Resolves `probe://` links into clickable navigation UI with copyable context
+- `src/editor/excel/excelTablePersistence.ts`
+  - Encapsulates Excel table persistence for both immediate and deferred saves
+  - Handles `.xlsx` format-preserving writes with compatibility fallback
+  - Owns filtered-row-to-source-row mapping during save to avoid write misalignment
+- `src/editor/utils/markdownUiUtils.ts`
+  - Provides reusable Markdown/UI helper functions (escape, slug, inline markdown, value formatting)
+  - Handles code indentation normalize/restore and language detection
+  - Keeps utility logic out of provider orchestration flow
 
 ### Providers and command layer
 
@@ -122,6 +130,13 @@ Webview UI
 2. Extension host resolves target node/range in source parser
 3. Apply targeted replacement and write file
 4. Clear cache and send result back to Webview
+
+### Excel table save flow
+
+1. Webview sends deferred `saveExcelTable` payload (with `sourceRowIndices` when filtered)
+2. `SmartMarkdownEditorProvider` delegates persistence to `excelTablePersistence`
+3. Module tries `.xlsx` style-preserving write first, then compatibility fallback if needed
+4. Row index mapping uses source-row indices to ensure filtered views write back to correct physical rows
 
 ### Navigation and reverse linkage
 

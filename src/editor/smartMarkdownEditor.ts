@@ -7,8 +7,6 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
-import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { WizardBlockParser } from '../core/parser/wizardBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
@@ -19,6 +17,20 @@ import { JsonPatcher } from '../core/patcher/jsonPatcher';
 import { PathResolver } from '../core/linker/pathResolver';
 import { ProbeScanner } from '../core/probeScanner';
 import { ParsedWizardBlock, WizardStep, WizardVariable } from '../types';
+import {
+  applyExcelCellUpdateInMemory,
+  saveExcelTableWithFallback,
+} from './excel/excelTablePersistence';
+import {
+  denormalizeIndentation,
+  escapeHtml,
+  formatValue,
+  getLanguageFromFile,
+  normalizeIndentation,
+  processInlineMarkdown,
+  simpleMarkdownToHtml,
+  slugify,
+} from './utils/markdownUiUtils';
 import MarkdownIt = require('markdown-it');
 import * as yaml from 'yaml';
 
@@ -483,67 +495,15 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
 
       if (isExcelFile) {
-        const workbook = this.readExcelWorkbook(sourcePath);
-        const worksheetName = this.resolveExcelSheetName(workbook, message.key);
-        if (!worksheetName) {
-          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', message.key));
-          return;
-        }
-        const sheet = workbook.Sheets[worksheetName];
-        if (!sheet) {
-          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
-          return;
-        }
-
-        const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
-          header: 1,
-          defval: null,
-          raw: true
-        });
-        if (!rows2d || rows2d.length === 0) {
-          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet has no header row'));
-          return;
-        }
-
-        const headerRow = rows2d[0] || [];
-        const headers = headerRow.map((h, idx) => {
-          if (h === null || h === undefined || String(h).trim() === '') {
-            return `col_${idx + 1}`;
-          }
-          return String(h).trim();
-        });
-        const colIndex = headers.indexOf(message.colKey);
-        if (colIndex < 0) {
-          vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', message.colKey));
-          return;
-        }
-
-        const totalRows = Math.max(0, rows2d.length - 1);
-        const options = this.resolveTableReadOptions(message.maxRows, message.tailRows, totalRows);
-        const start = options.start;
-        const end = options.end;
-        const visibleCount = Math.max(0, end - start);
-        if (message.rowIndex < 0 || message.rowIndex >= visibleCount) {
-          vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
-          return;
-        }
-        const sourceDataRowIndex = start + message.rowIndex;
-        const targetSheetRow = sourceDataRowIndex + 1;
-        const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
-
-        if (message.value === null || message.value === undefined || message.value === '') {
-          delete (sheet as any)[targetCell];
-        } else if (typeof message.value === 'number') {
-          (sheet as any)[targetCell] = { t: 'n', v: message.value };
-        } else if (typeof message.value === 'boolean') {
-          (sheet as any)[targetCell] = { t: 'b', v: message.value };
-        } else if (message.value instanceof Date) {
-          (sheet as any)[targetCell] = { t: 'd', v: message.value };
-        } else {
-          (sheet as any)[targetCell] = { t: 's', v: String(message.value) };
-        }
-
-        this.writeExcelWorkbook(workbook, sourcePath);
+        applyExcelCellUpdateInMemory(
+          sourcePath,
+          message.key,
+          message.maxRows,
+          message.tailRows,
+          message.rowIndex,
+          message.colKey,
+          message.value
+        );
         this.luaLinker.clearCache(sourcePath);
         vscode.window.showInformationMessage(
           vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)
@@ -670,47 +630,22 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 
       try {
         fs.accessSync(sourcePath, fs.constants.W_OK);
-        // For .xlsx, use exceljs to keep existing formatting/styles as much as possible.
-        if (/\.xlsx$/i.test(sourcePath)) {
-          try {
-            await this.writeExcelWithExcelJs(
-              sourcePath,
-              message.key,
-              message.maxRows,
-              message.tailRows,
-              message.sourceRowIndices,
-              updates
-            );
-          } catch (excelJsError) {
-            // Fallback path for workbooks with unsupported conditional formatting rules.
-            const workbook = this.readExcelWorkbook(sourcePath);
-            this.applyUpdatesToXlsxWorkbook(
-              workbook,
-              message.key,
-              message.maxRows,
-              message.tailRows,
-              message.sourceRowIndices,
-              updates
-            );
-            this.writeExcelWorkbook(workbook, sourcePath);
-            vscode.window.showWarningMessage(
-              vscode.l10n.t(
-                'Excel format-preserving save failed, used compatibility mode: {0}. Some styles may change.',
-                excelJsError instanceof Error ? excelJsError.message : String(excelJsError)
-              )
-            );
-          }
-        } else {
-          const workbook = this.readExcelWorkbook(sourcePath);
-          this.applyUpdatesToXlsxWorkbook(
-            workbook,
-            message.key,
-            message.maxRows,
-            message.tailRows,
-            message.sourceRowIndices,
-            updates
+        const saveResult = await saveExcelTableWithFallback({
+          sourcePath,
+          sheetName: message.key,
+          maxRows: message.maxRows,
+          tailRows: message.tailRows,
+          sourceRowIndices: message.sourceRowIndices,
+          updates
+        });
+        if (saveResult.usedCompatibilityFallback && saveResult.fallbackReason) {
+          vscode.window.showWarningMessage(
+            vscode.l10n.t(
+              'Excel format-preserving save failed, used compatibility mode: {0}. Some styles may change.',
+              saveResult.fallbackReason
+            )
           );
-          this.writeExcelWorkbook(workbook, sourcePath);
+        } else if (!/\.xlsx$/i.test(sourcePath)) {
           vscode.window.showWarningMessage(
             vscode.l10n.t('Format-preserving save is optimized for .xlsx. Current format may lose styles.')
           );
@@ -971,68 +906,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
   }
 
   /**
-   * Normalize indentation: extract and remove common indent prefix from non-first lines
-   * First line unchanged (usually function keyword, no leading indent)
-   */
-  private normalizeIndentation(code: string): { normalized: string; baseIndent: string } {
-    const lines = code.split('\n');
-    if (lines.length <= 1) { return { normalized: code, baseIndent: '' }; }
-
-    // Find minimum indent of non-empty lines from line 2 onwards
-    let minIndent = Infinity;
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.trim() === '') { continue; }
-      const match = line.match(/^(\s+)/);
-      const indent = match ? match[1].length : 0;
-      minIndent = Math.min(minIndent, indent);
-    }
-
-    if (minIndent === 0 || minIndent === Infinity) { return { normalized: code, baseIndent: '' }; }
-
-    // Extract baseIndent actual string (preserve tab/space as is)
-    const refLine = lines.find((l, i) => i > 0 && l.trim() !== '');
-    const baseIndent = refLine ? refLine.substring(0, minIndent) : ' '.repeat(minIndent);
-
-    const normalizedLines = lines.map((line, i) => {
-      if (i === 0) { return line; }
-      if (line.trim() === '') { return ''; }
-      return line.substring(minIndent);
-    });
-
-    return { normalized: normalizedLines.join('\n'), baseIndent };
-  }
-
-  /**
-   * Restore indentation
-   */
-  private denormalizeIndentation(code: string, baseIndent: string): string {
-    if (!baseIndent) { return code; }
-    const lines = code.split('\n');
-    return lines.map((line, i) => {
-      if (i === 0) { return line; }
-      if (line.trim() === '') { return line; }
-      return baseIndent + line;
-    }).join('\n');
-  }
-
-  /**
-   * Get language from file path
-   */
-  private getLanguageFromFile(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    const langMap: Record<string, string> = {
-      '.lua': 'lua', '.js': 'javascript', '.ts': 'typescript',
-      '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
-      '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c',
-      '.cs': 'csharp', '.sh': 'bash', '.sql': 'sql', '.json': 'json',
-      '.xml': 'xml', '.html': 'html', '.css': 'css', '.yaml': 'yaml',
-      '.yml': 'yaml', '.toml': 'ini', '.md': 'markdown',
-    };
-    return langMap[ext] || 'plaintext';
-  }
-
-  /**
    * Generate HTML content
    */
   private getHtmlContent(
@@ -1178,7 +1051,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     md.renderer.rules.heading_open = (tokens: any[], idx: number, options: any, env: any, self: any) => {
       const inline = tokens[idx + 1];
       if (inline && inline.type === 'inline') {
-        const slug = this.slugify(inline.content);
+        const slug = slugify(inline.content);
         if (slug) {
           tokens[idx].attrSet('id', slug);
         }
@@ -1337,9 +1210,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         <div class="wizard-step" id="${stepId}" style="display: ${isFirst ? 'block' : 'none'};">
           <div class="wizard-step-header">
             <span class="wizard-step-badge">${vscode.l10n.t('Step')} ${i + 1} / ${totalSteps}</span>
-            <span class="wizard-step-title">${this.escapeHtml(step.label)}</span>
+            <span class="wizard-step-title">${escapeHtml(step.label)}</span>
           </div>
-          ${step.description ? `<div class="wizard-step-desc">${this.escapeHtml(step.description)}</div>` : ''}
+          ${step.description ? `<div class="wizard-step-desc">${escapeHtml(step.description)}</div>` : ''}
           <div class="wizard-step-input">
             ${this.renderWizardStepInput(wizardId, step, i)}
           </div>
@@ -1384,7 +1257,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       absoluteFilePath,
       resolvedVars
     };
-    const dataAttr = this.escapeHtml(JSON.stringify(wizardData));
+    const dataAttr = escapeHtml(JSON.stringify(wizardData));
 
     // Header subtitle: show target for append, cwd for run
     const subtitleText = isRunAction
@@ -1398,11 +1271,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
 <div class="wizard-block" id="${wizardId}" data-wizard='${dataAttr}'>
   <div class="wizard-header">
     <span class="wizard-icon">${icon}</span>
-    <span class="wizard-title">${this.escapeHtml(label)}</span>
-    <span class="wizard-target" title="${this.escapeHtml(subtitleTitle)}">${this.escapeHtml(subtitleText)}</span>
+    <span class="wizard-title">${escapeHtml(label)}</span>
+    <span class="wizard-target" title="${escapeHtml(subtitleTitle)}">${escapeHtml(subtitleText)}</span>
   </div>
   <div class="wizard-progress" id="${wizardId}-progress">
-    ${processedSteps.map((s: WizardStep, i: number) => `<div class="wizard-progress-dot ${i === 0 ? 'active' : ''}" id="${wizardId}-dot-${i}" title="${this.escapeHtml(s.label)}">${i + 1}</div>`).join('<div class="wizard-progress-line"></div>')}
+    ${processedSteps.map((s: WizardStep, i: number) => `<div class="wizard-progress-dot ${i === 0 ? 'active' : ''}" id="${wizardId}-dot-${i}" title="${escapeHtml(s.label)}">${i + 1}</div>`).join('<div class="wizard-progress-line"></div>')}
   </div>
   <div class="wizard-body">
     ${stepsHtml}
@@ -1426,7 +1299,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         return `<input type="number" class="wizard-input" id="${inputId}" value="${defaultVal}"${minAttr}${maxAttr}${stepAttr} />`;
       }
       case 'string':
-        return `<input type="text" class="wizard-input" id="${inputId}" value="${this.escapeHtml(String(defaultVal))}" placeholder="${this.escapeHtml(step.label)}" />`;
+        return `<input type="text" class="wizard-input" id="${inputId}" value="${escapeHtml(String(defaultVal))}" placeholder="${escapeHtml(step.label)}" />`;
       case 'boolean':
         return `
           <label class="wizard-checkbox">
@@ -1435,12 +1308,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
           </label>`;
       case 'select': {
         const opts = (step.options || [])
-          .map((o: { label: string; value: string | number }) => `<option value="${this.escapeHtml(String(o.value))}" ${o.value === defaultVal ? 'selected' : ''}>${this.escapeHtml(o.label)}</option>`)
+          .map((o: { label: string; value: string | number }) => `<option value="${escapeHtml(String(o.value))}" ${o.value === defaultVal ? 'selected' : ''}>${escapeHtml(o.label)}</option>`)
           .join('');
         return `<select class="wizard-input" id="${inputId}">${opts}</select>`;
       }
       default:
-        return `<input type="text" class="wizard-input" id="${inputId}" value="${this.escapeHtml(String(defaultVal))}" />`;
+        return `<input type="text" class="wizard-input" id="${inputId}" value="${escapeHtml(String(defaultVal))}" />`;
     }
   }
 
@@ -1788,12 +1661,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     const probeClickMap: Record<string, { file: string; line: number; target: string; fileName: string }> = {};
     const processedCode = this.processMermaidProbeClicks(code, index, mdDir, probeClickMap);
 
-    const escapedCode = this.escapeHtml(processedCode)
+    const escapedCode = escapeHtml(processedCode)
       .replace(/\n/g, '&#10;');
 
     // Attach resolved probe click data as a JSON attribute
     const probeDataAttr = Object.keys(probeClickMap).length > 0
-      ? ` data-probe-clicks="${this.escapeHtml(JSON.stringify(probeClickMap))}"`
+      ? ` data-probe-clicks="${escapeHtml(JSON.stringify(probeClickMap))}"`
       : '';
 
     return `
@@ -1858,12 +1731,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         const escapedPath = target.filePath.replace(/\\/g, '\\\\');
         const relPath = path.relative(mdDir, target.filePath).replace(/\\/g, '/');
         const copyContext = `${relPath}:${target.line} (${probeLink.probeName})`;
-        const jumpTitle = this.escapeHtml(vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line));
-        const copyTitle = this.escapeHtml(vscode.l10n.t('Copy reference for AI (Ctrl+V to paste)'));
-        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${jumpTitle}">📍 ${this.escapeHtml(probeLink.displayText)}</a><span class="probe-copy-btn" onclick="copyContext('${this.escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${copyTitle}">📋</span></span>`;
+        const jumpTitle = escapeHtml(vscode.l10n.t('Jump to probe "{0}" (Line {1})', probeLink.probeName, target.line));
+        const copyTitle = escapeHtml(vscode.l10n.t('Copy reference for AI (Ctrl+V to paste)'));
+        replacement = `<span class="probe-link-group"><a class="probe-link" href="javascript:void(0)" onclick="gotoProbe('${escapedPath}', ${target.line})" title="${jumpTitle}">📍 ${escapeHtml(probeLink.displayText)}</a><span class="probe-copy-btn" onclick="copyContext('${escapeHtml(copyContext).replace(/'/g, '\\\'')}')" title="${copyTitle}">📋</span></span>`;
       } else {
-        const brokenTitle = this.escapeHtml(vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath));
-        replacement = `<span class="probe-link-broken" title="${brokenTitle}">⚠️ ${this.escapeHtml(probeLink.displayText)}</span>`;
+        const brokenTitle = escapeHtml(vscode.l10n.t('Probe "{0}" not found in {1}', probeLink.probeName, probeLink.filePath));
+        replacement = `<span class="probe-link-broken" title="${brokenTitle}">⚠️ ${escapeHtml(probeLink.displayText)}</span>`;
       }
 
       text = text.substring(0, probeLink.matchStart) + replacement + text.substring(probeLink.matchEnd);
@@ -1917,13 +1790,13 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     // Build copy context for AI assistant
     const safeCurrentValue = block.type === 'code'
       ? '(function)'
-      : this.formatValue(block.currentValue);
+      : formatValue(block.currentValue);
     const copyContext = block.linkStatus === 'ok'
       ? `[Config] ${String(block.key)} = ${safeCurrentValue} | File: ${String(block.file)}, Line: ${block.luaNode?.loc.start.line || '?'}`
       : `[Config] ${block.key} | ${block.linkError || 'unlinked'}`;
 
     return `
-<div class="config-block ${statusClass}" data-block-id="${blockId}" data-copy-context="${this.escapeHtml(copyContext)}">
+<div class="config-block ${statusClass}" data-block-id="${blockId}" data-copy-context="${escapeHtml(copyContext)}">
   <div class="config-header">
     <span class="copy-handle" onclick="copyContext(this.closest('.config-block').getAttribute('data-copy-context'))" title="${vscode.l10n.t('Copy as AI context (Ctrl+V to paste)')}">📋</span>
     <span class="status-icon">${statusIcon}</span>
@@ -2023,7 +1896,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   type="text" 
   id="${blockId}" 
   class="string-input"
-  value="${this.escapeHtml(value)}"
+  value="${escapeHtml(value)}"
   onchange="updateValue('${blockId}')"
   onkeypress="handleKeyPress(event, '${blockId}')"
 />`;
@@ -2113,7 +1986,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     const functionSource = block.currentValue || '-- No function found';
 
     // Indent normalization (cache for async init later)
-    const { normalized, baseIndent } = this.normalizeIndentation(functionSource);
+    const { normalized, baseIndent } = normalizeIndentation(functionSource);
     this.codeNormCache.set(blockId, { normalized, baseIndent });
 
     return `
@@ -2188,7 +2061,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       }
 
       // Restore indent: recover normalized code to original indentation
-      const restoredCode = this.denormalizeIndentation(message.code, message.baseIndent || '');
+      const restoredCode = denormalizeIndentation(message.code, message.baseIndent || '');
 
       // Precise replacement: only replace function part, preserve all other content
       const before = luaCode.substring(0, result.node.range[0]);
@@ -2257,166 +2130,10 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
   }
 
   /**
-   * Simple Markdown to HTML
-   * More compact layout, avoid excessive blank lines
-   */
-  private simpleMarkdownToHtml(text: string): string {
-    // Split text by lines for processing
-    const lines = text.split('\n');
-    const result: string[] = [];
-    let inBlockquote = false;
-    let blockquoteLines: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // 跳过占位符周围的空行
-      if (line.trim() === '' && 
-          (result.length > 0 && (result[result.length - 1].includes('__CONFIG_BLOCK_PLACEHOLDER_') || result[result.length - 1].includes('__MERMAID_BLOCK_PLACEHOLDER_')))) {
-        continue;
-      }
-      if (line.trim() === '' && 
-          i + 1 < lines.length && (lines[i + 1].includes('__CONFIG_BLOCK_PLACEHOLDER_') || lines[i + 1].includes('__MERMAID_BLOCK_PLACEHOLDER_'))) {
-        continue;
-      }
-
-      // 处理引用块（可能跨多行）
-      if (line.startsWith('> ')) {
-        if (!inBlockquote) {
-          inBlockquote = true;
-          blockquoteLines = [];
-        }
-        blockquoteLines.push(line.slice(2));
-        continue;
-      } else if (inBlockquote) {
-        // 结束引用块
-        result.push(`<blockquote>${blockquoteLines.join('<br>')}</blockquote>`);
-        inBlockquote = false;
-        blockquoteLines = [];
-      }
-
-      // 标题 (with slug-based id for scroll targeting)
-      if (line.startsWith('### ')) {
-        const text = line.slice(4);
-        const slug = this.slugify(text);
-        result.push(`<h3 id="${slug}">${this.processInlineMarkdown(text)}</h3>`);
-        continue;
-      }
-      if (line.startsWith('## ')) {
-        const text = line.slice(3);
-        const slug = this.slugify(text);
-        result.push(`<h2 id="${slug}">${this.processInlineMarkdown(text)}</h2>`);
-        continue;
-      }
-      if (line.startsWith('# ')) {
-        const text = line.slice(2);
-        const slug = this.slugify(text);
-        result.push(`<h1 id="${slug}">${this.processInlineMarkdown(text)}</h1>`);
-        continue;
-      }
-
-      // 占位符直接输出
-      if (line.includes('__CONFIG_BLOCK_PLACEHOLDER_') || line.includes('__MERMAID_BLOCK_PLACEHOLDER_')) {
-        result.push(line);
-        continue;
-      }
-
-      // 空行只在必要时添加段落分隔
-      if (line.trim() === '') {
-        // 只有当上一行不是块级元素时才添加空行
-        const lastLine = result[result.length - 1] || '';
-        if (lastLine && 
-            !lastLine.endsWith('</h1>') && 
-            !lastLine.endsWith('</h2>') && 
-            !lastLine.endsWith('</h3>') && 
-            !lastLine.endsWith('</blockquote>') &&
-            !lastLine.includes('__CONFIG_BLOCK_PLACEHOLDER_') &&
-            !lastLine.includes('__MERMAID_BLOCK_PLACEHOLDER_')) {
-          result.push('<br>');
-        }
-        continue;
-      }
-
-      // 普通段落
-      result.push(`<p>${this.processInlineMarkdown(line)}</p>`);
-    }
-
-    // 处理末尾的引用块
-    if (inBlockquote && blockquoteLines.length > 0) {
-      result.push(`<blockquote>${blockquoteLines.join('<br>')}</blockquote>`);
-    }
-
-    return result.join('\n');
-  }
-
-  /**
-   * Process inline Markdown syntax
-   */
-  private processInlineMarkdown(text: string): string {
-    return text
-      // 粗体
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      // 斜体
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      // 代码
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
-  }
-
-  /**
-   * Generate a URL-friendly slug from heading text (GitHub-style).
-   * Strips HTML, emoji, lowercases, replaces spaces/special with hyphens.
-   */
-  private slugify(text: string): string {
-    return text
-      // Remove inline markdown (bold, italic, code)
-      .replace(/\*\*(.+?)\*\*/g, '$1')
-      .replace(/\*(.+?)\*/g, '$1')
-      .replace(/`([^`]+)`/g, '$1')
-      // Remove emoji (Unicode emoji range)
-      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-      .trim()
-      .toLowerCase()
-      // Replace non-alphanumeric (keep CJK, letters, digits) with hyphens
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      // Remove leading/trailing hyphens
-      .replace(/^-+|-+$/g, '');
-  }
-
-  /**
    * Generate block ID
    */
   private generateBlockId(block: { key: string }): string {
     return `block-${block.key.replace(/\./g, '-').replace(/\[|\]/g, '_')}`;
-  }
-
-  /**
-   * Format value
-   */
-  private formatValue(value: any): string {
-    try {
-      if (value === null || value === undefined) {
-        return 'nil';
-      }
-      if (typeof value === 'object') {
-        const serialized = JSON.stringify(value);
-        return serialized ?? '[object]';
-      }
-      return String(value);
-    } catch {
-      return '[unserializable]';
-    }
-  }
-
-  /**
-   * HTML escape
-   */
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   /**
@@ -3738,7 +3455,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         min: block.min,
         max: block.max,
         step: block.step || 1,
-        lang: block.type === 'code' ? this.getLanguageFromFile(block.absoluteFilePath) : undefined,
+        lang: block.type === 'code' ? getLanguageFromFile(block.absoluteFilePath) : undefined,
         baseIndent: normData?.baseIndent || '',
         originalCode: normData?.normalized || '',
         absoluteFilePath: block.absoluteFilePath || '',
@@ -4658,251 +4375,4 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     `;
   }
 
-  private resolveExcelSheetName(workbook: XLSX.WorkBook, requested: string): string | null {
-    if (!workbook || !Array.isArray(workbook.SheetNames) || workbook.SheetNames.length === 0) {
-      return null;
-    }
-    if (!requested) {
-      return workbook.SheetNames[0];
-    }
-    if (workbook.SheetNames.includes(requested)) {
-      return requested;
-    }
-    const normalized = requested.trim().toLowerCase();
-    const matched = workbook.SheetNames.find(n => n.toLowerCase() === normalized);
-    return matched || null;
-  }
-
-  private resolveTableReadOptions(
-    maxRows: number | undefined,
-    tailRows: number | undefined,
-    totalRows: number
-  ): { start: number; end: number } {
-    const normalizedMaxRows = Number.isInteger(maxRows) && (maxRows as number) > 0
-      ? Math.min(maxRows as number, SmartMarkdownEditorProvider.MAX_TABLE_ROWS_CAP)
-      : totalRows;
-    const normalizedTailRows = Number.isInteger(tailRows) && (tailRows as number) > 0
-      ? (tailRows as number)
-      : undefined;
-    const start = normalizedTailRows !== undefined
-      ? Math.max(0, totalRows - Math.min(normalizedTailRows, totalRows))
-      : 0;
-    const end = Math.min(totalRows, start + normalizedMaxRows);
-    return { start, end };
-  }
-
-  private readExcelWorkbook(sourcePath: string): XLSX.WorkBook {
-    if (!fs.existsSync(sourcePath)) {
-      throw new Error(vscode.l10n.t('File not found: {0}', sourcePath));
-    }
-    try {
-      fs.accessSync(sourcePath, fs.constants.R_OK);
-      const buffer = fs.readFileSync(sourcePath);
-      return XLSX.read(buffer, { type: 'buffer', cellDates: true });
-    } catch (error) {
-      throw new Error(
-        vscode.l10n.t(
-          'Cannot read Excel file "{0}": {1}',
-          sourcePath,
-          error instanceof Error ? error.message : String(error)
-        )
-      );
-    }
-  }
-
-  private writeExcelWorkbook(workbook: XLSX.WorkBook, sourcePath: string): void {
-    try {
-      const out = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      fs.writeFileSync(sourcePath, out);
-    } catch (error) {
-      throw new Error(
-        vscode.l10n.t(
-          'cannot save file {0}: {1}',
-          sourcePath,
-          error instanceof Error ? error.message : String(error)
-        )
-      );
-    }
-  }
-
-  private applyUpdatesToXlsxWorkbook(
-    workbook: XLSX.WorkBook,
-    sheetKey: string,
-    maxRows: number | undefined,
-    tailRows: number | undefined,
-    sourceRowIndices: Array<number | null> | undefined,
-    updates: Array<{ rowIndex: number; colKey: string; value: any }>
-  ): void {
-    const worksheetName = this.resolveExcelSheetName(workbook, sheetKey);
-    if (!worksheetName) {
-      throw new Error(vscode.l10n.t('Worksheet not found: {0}', sheetKey));
-    }
-    const sheet = workbook.Sheets[worksheetName];
-    if (!sheet) {
-      throw new Error(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
-    }
-    const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
-      header: 1,
-      defval: null,
-      raw: true
-    });
-    if (!rows2d || rows2d.length === 0) {
-      throw new Error(vscode.l10n.t('Worksheet has no header row'));
-    }
-    const headerRow = rows2d[0] || [];
-    const headers = headerRow.map((h, idx) => {
-      if (h === null || h === undefined || String(h).trim() === '') {
-        return `col_${idx + 1}`;
-      }
-      return String(h).trim();
-    });
-    const totalRows = Math.max(0, rows2d.length - 1);
-    const options = this.resolveTableReadOptions(maxRows, tailRows, totalRows);
-    const start = options.start;
-    const end = options.end;
-    const visibleCount = Math.max(0, end - start);
-    const mappedVisibleCount = Array.isArray(sourceRowIndices) ? sourceRowIndices.length : visibleCount;
-
-    for (const change of updates) {
-      const colIndex = headers.indexOf(change.colKey);
-      if (colIndex < 0) {
-        throw new Error(vscode.l10n.t('Field not found: {0}', change.colKey));
-      }
-      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= mappedVisibleCount) {
-        throw new Error(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
-      }
-      const sourceDataRowIndex = this.resolveSourceDataRowIndex(
-        change.rowIndex,
-        start,
-        visibleCount,
-        sourceRowIndices
-      );
-      const targetSheetRow = sourceDataRowIndex + 1;
-      const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
-      if (change.value === null || change.value === undefined || change.value === '') {
-        delete (sheet as any)[targetCell];
-      } else if (typeof change.value === 'number') {
-        (sheet as any)[targetCell] = { t: 'n', v: change.value };
-      } else if (typeof change.value === 'boolean') {
-        (sheet as any)[targetCell] = { t: 'b', v: change.value };
-      } else if (change.value instanceof Date) {
-        (sheet as any)[targetCell] = { t: 'd', v: change.value };
-      } else {
-        (sheet as any)[targetCell] = { t: 's', v: String(change.value) };
-      }
-    }
-  }
-
-  private async writeExcelWithExcelJs(
-    sourcePath: string,
-    sheetName: string,
-    maxRows: number | undefined,
-    tailRows: number | undefined,
-    sourceRowIndices: Array<number | null> | undefined,
-    updates: Array<{ rowIndex: number; colKey: string; value: any }>
-  ): Promise<void> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(sourcePath);
-    this.sanitizeExcelJsConditionalFormats(workbook);
-    const worksheet = workbook.getWorksheet(sheetName);
-    if (!worksheet) {
-      throw new Error(vscode.l10n.t('Worksheet not found: {0}', sheetName));
-    }
-
-    const headerRow = worksheet.getRow(1);
-    const headerValues = Array.isArray(headerRow.values) ? headerRow.values.slice(1) : [];
-    const headers = headerValues.map((h, idx) => {
-      if (h === null || h === undefined || String(h).trim() === '') {
-        return `col_${idx + 1}`;
-      }
-      return String(h).trim();
-    });
-
-    if (headers.length === 0) {
-      throw new Error(vscode.l10n.t('Worksheet has no header row'));
-    }
-
-    const totalRows = Math.max(0, worksheet.actualRowCount - 1);
-    const options = this.resolveTableReadOptions(maxRows, tailRows, totalRows);
-    const start = options.start;
-    const end = options.end;
-    const visibleCount = Math.max(0, end - start);
-    const mappedVisibleCount = Array.isArray(sourceRowIndices) ? sourceRowIndices.length : visibleCount;
-
-    for (const change of updates) {
-      const colIndex = headers.indexOf(change.colKey);
-      if (colIndex < 0) {
-        throw new Error(vscode.l10n.t('Field not found: {0}', change.colKey));
-      }
-      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= mappedVisibleCount) {
-        throw new Error(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
-      }
-      const sourceDataRowIndex = this.resolveSourceDataRowIndex(
-        change.rowIndex,
-        start,
-        visibleCount,
-        sourceRowIndices
-      );
-      const excelRowNumber = sourceDataRowIndex + 2; // row 1 is header
-      const excelColNumber = colIndex + 1;
-      const cell = worksheet.getRow(excelRowNumber).getCell(excelColNumber);
-      if (change.value === null || change.value === undefined || change.value === '') {
-        cell.value = null;
-      } else {
-        cell.value = change.value as any;
-      }
-    }
-
-    await workbook.xlsx.writeFile(sourcePath);
-  }
-
-  private resolveSourceDataRowIndex(
-    rowIndex: number,
-    start: number,
-    visibleCount: number,
-    sourceRowIndices?: Array<number | null>
-  ): number {
-    if (Array.isArray(sourceRowIndices) && sourceRowIndices.length > 0) {
-      if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= sourceRowIndices.length) {
-        throw new Error(vscode.l10n.t('Invalid row index: {0}', rowIndex));
-      }
-      const mapped = sourceRowIndices[rowIndex];
-      if (!Number.isInteger(mapped) || (mapped as number) < 0) {
-        throw new Error(vscode.l10n.t('Invalid source row mapping at index: {0}', rowIndex));
-      }
-      return mapped as number;
-    }
-    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= visibleCount) {
-      throw new Error(vscode.l10n.t('Invalid row index: {0}', rowIndex));
-    }
-    return start + rowIndex;
-  }
-
-  private sanitizeExcelJsConditionalFormats(workbook: ExcelJS.Workbook): void {
-    for (const sheet of workbook.worksheets as any[]) {
-      const list = sheet.conditionalFormattings;
-      if (!Array.isArray(list)) {
-        continue;
-      }
-      const sanitized = [];
-      for (const cf of list) {
-        if (!cf || !Array.isArray(cf.rules)) {
-          continue;
-        }
-        const rules = cf.rules.filter((rule: any) => {
-          if (!rule || typeof rule !== 'object') {
-            return false;
-          }
-          if (rule.type === 'expression') {
-            return Array.isArray(rule.formulae) && rule.formulae.length > 0 && rule.formulae[0] !== undefined;
-          }
-          return true;
-        });
-        if (rules.length > 0) {
-          sanitized.push({ ...cf, rules });
-        }
-      }
-      sheet.conditionalFormattings = sanitized;
-    }
-  }
 }
