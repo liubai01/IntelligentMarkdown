@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import { ParsedConfigBlock } from '../../types';
 import { LuaParser } from '../parser/luaParser';
 import { JsonParser } from '../parser/jsonParser';
+import { ExcelParser } from '../parser/excelParser';
 import { PathResolver } from './pathResolver';
 
 export interface LinkedConfigBlock extends ParsedConfigBlock {
@@ -36,12 +37,13 @@ export interface LinkedConfigBlock extends ParsedConfigBlock {
 }
 
 export class LuaLinker {
+  private static readonly MAX_TABLE_ROWS_CAP = 1000;
   private pathResolver: PathResolver;
   private luaFileCache: Map<string, {
     content: string;
-    parser: LuaParser | JsonParser;
+    parser: LuaParser | JsonParser | ExcelParser;
     mtime: number;
-    format: 'lua' | 'json';
+    format: 'lua' | 'json' | 'excel';
   }>;
 
   constructor() {
@@ -83,6 +85,8 @@ export class LuaLinker {
     // Resolve source file path
     const absolutePath = this.pathResolver.resolve(baseDir, block.file || '');
     const isJsonFile = /\.(json|jsonc)$/i.test(absolutePath);
+    const isExcelFile = /\.(xlsx|xlsm|xlsb|xls)$/i.test(absolutePath);
+    const isTableType = block.type === 'table';
 
     // Create base linked block
     const linkedBlock: LinkedConfigBlock = {
@@ -100,21 +104,30 @@ export class LuaLinker {
     }
 
     try {
-      // JSON code editor is postponed to a later phase
-      if (isJsonFile && block.type === 'code') {
+      // JSON/Excel code editor is postponed to a later phase
+      if ((isJsonFile || isExcelFile) && block.type === 'code') {
         linkedBlock.linkStatus = 'parse-error';
-        linkedBlock.linkError = vscode.l10n.t('Type "{0}" is not supported for JSON yet', block.type);
+        linkedBlock.linkError = vscode.l10n.t('Type "{0}" is not supported for this source format yet', block.type);
+        return linkedBlock;
+      }
+
+      if (isExcelFile && !isTableType) {
+        linkedBlock.linkStatus = 'parse-error';
+        linkedBlock.linkError = vscode.l10n.t('Excel source currently supports only table type');
         return linkedBlock;
       }
 
       // Get or create parser
       const parserInfo = await this.getParser(absolutePath);
       const parser = parserInfo.parser;
+      const tableReadOptions = this.resolveTableReadOptions(block.maxRows, block.tailRows);
 
       // Choose find method based on type
-      const result = !isJsonFile && block.type === 'code'
+      const result = !isJsonFile && !isExcelFile && block.type === 'code'
         ? (parser as LuaParser).findFunctionByFullPath(block.key)
-        : parser.findNodeByPath(block.key);
+        : isExcelFile
+          ? (parser as ExcelParser).findNodeByPath(block.key, tableReadOptions)
+          : parser.findNodeByPath(block.key);
 
       if (!result.success || !result.node) {
         linkedBlock.linkStatus = 'key-not-found';
@@ -153,6 +166,19 @@ export class LuaLinker {
         }
       }
 
+      if (isExcelFile && block.type === 'table' && result.astNode) {
+        const excelParser = parser as ExcelParser;
+        const tableData = excelParser.extractTableArray(result.astNode);
+        if (tableData) {
+          linkedBlock.luaNode.tableData = tableData as any;
+          linkedBlock.currentValue = tableData.map(row => row.data);
+        } else {
+          linkedBlock.linkStatus = 'parse-error';
+          linkedBlock.linkError = vscode.l10n.t('Excel table editor requires a worksheet with header row');
+          return linkedBlock;
+        }
+      }
+
       linkedBlock.linkStatus = 'ok';
 
     } catch (error) {
@@ -167,12 +193,16 @@ export class LuaLinker {
    * Get Lua file parser (with cache)
    */
   private async getParser(filePath: string): Promise<{
-    parser: LuaParser | JsonParser;
-    format: 'lua' | 'json';
+    parser: LuaParser | JsonParser | ExcelParser;
+    format: 'lua' | 'json' | 'excel';
   }> {
     const stats = fs.statSync(filePath);
     const mtime = stats.mtimeMs;
-    const format: 'lua' | 'json' = /\.(json|jsonc)$/i.test(filePath) ? 'json' : 'lua';
+    const format: 'lua' | 'json' | 'excel' = /\.(json|jsonc)$/i.test(filePath)
+      ? 'json'
+      : /\.(xlsx|xlsm|xlsb|xls)$/i.test(filePath)
+        ? 'excel'
+        : 'lua';
 
     // Check cache
     const cached = this.luaFileCache.get(filePath);
@@ -181,15 +211,32 @@ export class LuaLinker {
     }
 
     // Read and parse file
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = format === 'excel'
+      ? ''
+      : fs.readFileSync(filePath, 'utf-8');
     const parser = format === 'json'
       ? new JsonParser(content)
-      : new LuaParser(content);
+      : format === 'excel'
+        ? new ExcelParser(filePath)
+        : new LuaParser(content);
 
     // Update cache
     this.luaFileCache.set(filePath, { content, parser, mtime, format });
 
     return { parser, format };
+  }
+
+  private resolveTableReadOptions(maxRows?: number, tailRows?: number): { maxRows?: number; tailRows?: number } {
+    const normalizedMaxRows = Number.isInteger(maxRows) && (maxRows as number) > 0
+      ? Math.min(maxRows as number, LuaLinker.MAX_TABLE_ROWS_CAP)
+      : undefined;
+    const normalizedTailRows = Number.isInteger(tailRows) && (tailRows as number) > 0
+      ? (tailRows as number)
+      : undefined;
+    return {
+      maxRows: normalizedMaxRows,
+      tailRows: normalizedTailRows
+    };
   }
 
   /**

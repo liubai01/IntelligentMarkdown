@@ -43,7 +43,7 @@ label: Display Name
 ```
 ````
 
-The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
+The `file` target may point to `.lua`, `.json`, `.jsonc`, `.xlsx`, `.xlsm`, `.xlsb`, or `.xls` today.
 
 ---
 
@@ -51,7 +51,7 @@ The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
 
 | Field  | Type     | Description                        |
 |--------|----------|------------------------------------|
-| `file` | `string` | Relative path to the source file (`.lua`, `.json`, `.jsonc`) |
+| `file` | `string` | Relative path to the source file (`.lua`, `.json`, `.jsonc`, `.xlsx`, `.xlsm`, `.xlsb`, `.xls`) |
 | `key`  | `string` | Dot/bracket path for target value |
 | `type` | `string` | Control type (see [Types](#types))  |
 
@@ -74,6 +74,8 @@ The `file` target may point to `.lua`, `.json`, or `.jsonc` today.
 | `readonly` | `boolean`           | all                      | Make the control read-only       |
 | `options`  | `SelectOption[]`    | `select`                 | Dropdown options list            |
 | `columns`  | `TableColumn[]`     | `table`                  | Column definitions for table     |
+| `maxRows` / `max-rows` | `number` | `table` | Max rows returned to preview (hard capped by extension) |
+| `tailRows` / `tail-rows` | `number` | `table` | Read only the last N rows before applying `maxRows` |
 
 ---
 
@@ -210,7 +212,8 @@ label: Difficulty
 
 Spreadsheet-style editor for arrays of objects.
 
-> JSON support note: `table` is now supported for JSON arrays of objects in phase 2.
+> JSON support note: `table` is supported for JSON arrays of objects.
+> Excel support note: for Excel files, `key` is treated as worksheet name.
 
 ```lua-config
 file: ./items.lua
@@ -242,6 +245,14 @@ columns:
 | `options`  | `SelectOption[]` |          | Options (select columns)             |
 | `readonly` | `boolean`        |          | Make column read-only                |
 | `width`    | `string`         |          | CSS width (e.g. `"120px"`)           |
+| `maxRows` / `max-rows` | `number` |          | Limit preview rows (recommended for large tables) |
+| `tailRows` / `tail-rows` | `number` |          | Read only the last N rows (hot-tail window) |
+
+**Performance tips for large Excel sheets:**
+
+- Use `tailRows` to focus on the newest rows.
+- Use `maxRows` to cap UI payload size.
+- The extension enforces a global hard cap (currently `1000`) even if a larger `maxRows` is configured.
 
 ---
 
@@ -574,6 +585,30 @@ columns:
   - { key: "price", label: "Price", type: "number", min: 0, max: 99999, width: "100px" }
   - { key: "enabled", label: "Active", type: "boolean", width: "80px" }
 ```
+</details>
+
+<details>
+<summary><b>Excel table (City sheet, with tail window)</b></summary>
+
+```lua-config
+file: ./excel/city.xlsx
+key: City
+type: table
+label: City Metrics (last 8 rows, return at most 5)
+tailRows: 8
+maxRows: 5
+columns:
+  - { key: "City", label: "City", type: "string", width: "220px" }
+  - { key: "Country", label: "Country", type: "string", width: "130px" }
+  - { key: "Cost of Living Index (NYC=100)", label: "Cost Index", type: "number", min: 0, max: 200, step: 0.1, width: "140px" }
+  - { key: "Avg. Monthly Net Salary (After Tax, USD)", label: "Net Salary / Month", type: "string", width: "190px" }
+```
+
+Notes:
+
+- For Excel, `key` maps to sheet name.
+- First row is treated as header.
+- `tailRows` applies before `maxRows`.
 </details>
 
 <details>

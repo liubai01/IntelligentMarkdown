@@ -67,6 +67,10 @@ export interface ConfigBlock {
   readonly?: boolean;
   /** Table columns definition */
   columns?: TableColumn[];
+  /** Max rows returned for table preview (capped globally) */
+  maxRows?: number;
+  /** Read last N rows from table source first (for large datasets) */
+  tailRows?: number;
 }
 
 /** Parsed config block (with position info) */

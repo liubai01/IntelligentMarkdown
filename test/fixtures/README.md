@@ -16,6 +16,10 @@ Fixtures are now physically organized by category folders.
 
 - `json-config/game_json.config.md` + `json-config/game_json_config.json`
 
+## Excel Config Binding
+
+- `excel/city.config.md` + `excel/city.xlsx` (sheet: `City`)
+
 ## Wizard Fixtures
 
 ### Run Action

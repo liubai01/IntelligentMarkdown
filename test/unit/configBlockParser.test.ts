@@ -90,6 +90,44 @@ range: [100, 500]
       expect(blocks[0].max).toBe(500);
     });
 
+    it('应该解析 table 的 maxRows 和 tailRows', () => {
+      const markdown = `
+\`\`\`lua-config
+file: ./loot.xlsx
+key: LootSheet
+type: table
+maxRows: 120
+tailRows: 25
+columns:
+  - { key: "id", label: "ID", type: "number" }
+\`\`\`
+`;
+      const blocks = parser.parseMarkdown(markdown);
+
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].maxRows).toBe(120);
+      expect(blocks[0].tailRows).toBe(25);
+    });
+
+    it('应该解析 table 的 kebab-case 别名字段', () => {
+      const markdown = `
+\`\`\`lua-config
+file: ./loot.xlsx
+key: LootSheet
+type: table
+max-rows: 80
+tail-rows: 10
+columns:
+  - { key: "id", label: "ID", type: "number" }
+\`\`\`
+`;
+      const blocks = parser.parseMarkdown(markdown);
+
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].maxRows).toBe(80);
+      expect(blocks[0].tailRows).toBe(10);
+    });
+
     it('应该解析 select 的 options', () => {
       const markdown = `
 \`\`\`lua-config

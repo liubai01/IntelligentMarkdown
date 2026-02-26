@@ -7,6 +7,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
+import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { ConfigBlockParser } from '../core/parser/configBlockParser';
 import { WizardBlockParser } from '../core/parser/wizardBlockParser';
 import { LuaLinker, LinkedConfigBlock } from '../core/linker/luaLinker';
@@ -22,6 +24,7 @@ import * as yaml from 'yaml';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'intelligentMarkdown.preview';
+  private static readonly MAX_TABLE_ROWS_CAP = 1000;
 
   private configParser: ConfigBlockParser;
   private wizardParser: WizardBlockParser;
@@ -89,6 +92,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             await this.handleUpdateTableCell(document, message);
             await this.updateWebview(document, webviewPanel.webview);
             break;
+          case 'saveExcelTable':
+            if (await this.handleSaveExcelTable(document, message)) {
+              webviewPanel.webview.postMessage({ type: 'excelSaved', blockId: message.blockId });
+              await this.updateWebview(document, webviewPanel.webview);
+            }
+            break;
           case 'saveCode':
             await this.handleSaveCode(document, message);
             await this.updateWebview(document, webviewPanel.webview);
@@ -135,10 +144,11 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       }
     });
 
-    // Listen to source file changes (Lua + JSON)
+    // Listen to source file changes (Lua + JSON + Excel)
     const luaWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
     const jsonWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
     const jsoncWatcher = vscode.workspace.createFileSystemWatcher('**/*.jsonc');
+    const excelWatcher = vscode.workspace.createFileSystemWatcher('**/*.xls*');
     luaWatcher.onDidChange(() => {
       this.luaLinker.clearCache();
       this.updateWebview(document, webviewPanel.webview);
@@ -151,12 +161,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       this.luaLinker.clearCache();
       this.updateWebview(document, webviewPanel.webview);
     });
+    excelWatcher.onDidChange(() => {
+      this.luaLinker.clearCache();
+      this.updateWebview(document, webviewPanel.webview);
+    });
 
     webviewPanel.onDidDispose(() => {
       changeSubscription.dispose();
       luaWatcher.dispose();
       jsonWatcher.dispose();
       jsoncWatcher.dispose();
+      excelWatcher.dispose();
     });
   }
 
@@ -325,6 +340,9 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             : (block.luaNode?.tableData?.map(row => row.data) || []);
           if (!sourceRows || sourceRows.length === 0) { return; }
 
+          const isExcelSource = /\.(xlsx|xlsm|xlsb|xls)$/i.test(block.absoluteFilePath || '');
+          const enableGotoSource = !isExcelSource;
+
           const rowLocations = block.storage === 'markdown'
             ? sourceRows.map(() => ({ line: 0, file: '' }))
             : (block.luaNode?.tableData?.map(row => ({
@@ -339,7 +357,8 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
             columns: block.columns,
             rows: sourceRows,
             rowLocations,
-            rowCount: sourceRows.length
+            rowCount: sourceRows.length,
+            enableGotoSource
           });
         } else if (block.type === 'code') {
           const normData = this.codeNormCache.get(blockId);
@@ -421,7 +440,17 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
    */
   private async handleUpdateTableCell(
     document: vscode.TextDocument,
-    message: { file?: string; key: string; rowIndex: number; colKey: string; value: any; blockId?: string; storage?: string }
+    message: {
+      file?: string;
+      key: string;
+      rowIndex: number;
+      colKey: string;
+      value: any;
+      blockId?: string;
+      storage?: string;
+      maxRows?: number;
+      tailRows?: number;
+    }
   ): Promise<void> {
     try {
       if (message.storage === 'markdown') {
@@ -446,9 +475,79 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       const mdDir = path.dirname(document.uri.fsPath);
       const sourcePath = this.pathResolver.resolve(mdDir, message.file || '');
       const isJsonFile = /\.(json|jsonc)$/i.test(sourcePath);
+      const isExcelFile = /\.(xlsx|xlsm|xlsb|xls)$/i.test(sourcePath);
 
       if (!fs.existsSync(sourcePath)) {
         vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', sourcePath));
+        return;
+      }
+
+      if (isExcelFile) {
+        const workbook = this.readExcelWorkbook(sourcePath);
+        const worksheetName = this.resolveExcelSheetName(workbook, message.key);
+        if (!worksheetName) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', message.key));
+          return;
+        }
+        const sheet = workbook.Sheets[worksheetName];
+        if (!sheet) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
+          return;
+        }
+
+        const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
+          header: 1,
+          defval: null,
+          raw: true
+        });
+        if (!rows2d || rows2d.length === 0) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Worksheet has no header row'));
+          return;
+        }
+
+        const headerRow = rows2d[0] || [];
+        const headers = headerRow.map((h, idx) => {
+          if (h === null || h === undefined || String(h).trim() === '') {
+            return `col_${idx + 1}`;
+          }
+          return String(h).trim();
+        });
+        const colIndex = headers.indexOf(message.colKey);
+        if (colIndex < 0) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', message.colKey));
+          return;
+        }
+
+        const totalRows = Math.max(0, rows2d.length - 1);
+        const options = this.resolveTableReadOptions(message.maxRows, message.tailRows, totalRows);
+        const start = options.start;
+        const end = options.end;
+        const visibleCount = Math.max(0, end - start);
+        if (message.rowIndex < 0 || message.rowIndex >= visibleCount) {
+          vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', message.rowIndex));
+          return;
+        }
+        const sourceDataRowIndex = start + message.rowIndex;
+        const targetSheetRow = sourceDataRowIndex + 1;
+        const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
+
+        if (message.value === null || message.value === undefined || message.value === '') {
+          delete (sheet as any)[targetCell];
+        } else if (typeof message.value === 'number') {
+          (sheet as any)[targetCell] = { t: 'n', v: message.value };
+        } else if (typeof message.value === 'boolean') {
+          (sheet as any)[targetCell] = { t: 'b', v: message.value };
+        } else if (message.value instanceof Date) {
+          (sheet as any)[targetCell] = { t: 'd', v: message.value };
+        } else {
+          (sheet as any)[targetCell] = { t: 's', v: String(message.value) };
+        }
+
+        this.writeExcelWorkbook(workbook, sourcePath);
+        this.luaLinker.clearCache(sourcePath);
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('Updated table [{0}].{1} = {2}', message.rowIndex, message.colKey, message.value)
+        );
         return;
       }
 
@@ -536,6 +635,123 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       vscode.window.showErrorMessage(
         vscode.l10n.t('Table update failed: {0}', error instanceof Error ? error.message : String(error))
       );
+    }
+  }
+
+  private async handleSaveExcelTable(
+    document: vscode.TextDocument,
+    message: {
+      file?: string;
+      key: string;
+      maxRows?: number;
+      tailRows?: number;
+      updates?: Array<{ rowIndex: number; colKey: string; value: any }>;
+    }
+  ): Promise<boolean> {
+    try {
+      const updates = Array.isArray(message.updates) ? message.updates : [];
+      if (updates.length === 0) {
+        vscode.window.showInformationMessage(vscode.l10n.t('No pending Excel edits'));
+        return false;
+      }
+
+      const mdDir = path.dirname(document.uri.fsPath);
+      const sourcePath = this.pathResolver.resolve(mdDir, message.file || '');
+      const isExcelFile = /\.(xlsx|xlsm|xlsb|xls)$/i.test(sourcePath);
+      if (!isExcelFile) {
+        vscode.window.showErrorMessage(vscode.l10n.t('Current source is not an Excel file: {0}', sourcePath));
+        return false;
+      }
+      if (!fs.existsSync(sourcePath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', sourcePath));
+        return false;
+      }
+
+      try {
+        fs.accessSync(sourcePath, fs.constants.W_OK);
+        // For .xlsx, use exceljs to keep existing formatting/styles as much as possible.
+        if (/\.xlsx$/i.test(sourcePath)) {
+          await this.writeExcelWithExcelJs(sourcePath, message.key, message.maxRows, message.tailRows, updates);
+        } else {
+          const workbook = this.readExcelWorkbook(sourcePath);
+          const worksheetName = this.resolveExcelSheetName(workbook, message.key);
+          if (!worksheetName) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', message.key));
+            return false;
+          }
+          const sheet = workbook.Sheets[worksheetName];
+          if (!sheet) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
+            return false;
+          }
+          const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
+            header: 1,
+            defval: null,
+            raw: true
+          });
+          if (!rows2d || rows2d.length === 0) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet has no header row'));
+            return false;
+          }
+          const headerRow = rows2d[0] || [];
+          const headers = headerRow.map((h, idx) => {
+            if (h === null || h === undefined || String(h).trim() === '') {
+              return `col_${idx + 1}`;
+            }
+            return String(h).trim();
+          });
+          const totalRows = Math.max(0, rows2d.length - 1);
+          const options = this.resolveTableReadOptions(message.maxRows, message.tailRows, totalRows);
+          const start = options.start;
+          const end = options.end;
+          const visibleCount = Math.max(0, end - start);
+
+          for (const change of updates) {
+            const colIndex = headers.indexOf(change.colKey);
+            if (colIndex < 0) {
+              vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', change.colKey));
+              return false;
+            }
+            if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= visibleCount) {
+              vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
+              return false;
+            }
+            const sourceDataRowIndex = start + change.rowIndex;
+            const targetSheetRow = sourceDataRowIndex + 1;
+            const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
+            if (change.value === null || change.value === undefined || change.value === '') {
+              delete (sheet as any)[targetCell];
+            } else if (typeof change.value === 'number') {
+              (sheet as any)[targetCell] = { t: 'n', v: change.value };
+            } else if (typeof change.value === 'boolean') {
+              (sheet as any)[targetCell] = { t: 'b', v: change.value };
+            } else if (change.value instanceof Date) {
+              (sheet as any)[targetCell] = { t: 'd', v: change.value };
+            } else {
+              (sheet as any)[targetCell] = { t: 's', v: String(change.value) };
+            }
+          }
+          this.writeExcelWorkbook(workbook, sourcePath);
+          vscode.window.showWarningMessage(
+            vscode.l10n.t('Format-preserving save is optimized for .xlsx. Current format may lose styles.')
+          );
+        }
+      } catch (error) {
+        const errText = error instanceof Error ? error.message : String(error);
+        if (/cannot save file/i.test(errText)) {
+          throw error;
+        }
+        throw new Error(vscode.l10n.t('cannot save file {0}: {1}', sourcePath, errText));
+      }
+
+      this.luaLinker.clearCache(sourcePath);
+      vscode.window.showInformationMessage(vscode.l10n.t('Saved {0} Excel edits', updates.length));
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        vscode.l10n.t('Table update failed: {0}', error instanceof Error ? error.message : String(error))
+      );
+      return false;
     }
   }
 
@@ -1879,10 +2095,16 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
       skeletonRows += '</div>';
     }
 
+    const isExcelSource = /\.(xlsx|xlsm|xlsb|xls)$/i.test(block.absoluteFilePath || '');
+    const excelSaveButton = isExcelSource
+      ? `<button class="table-filter-btn" onclick="saveExcelTable('${blockId}')" title="${t('Apply pending edits to Excel file')}">💾 ${t('Apply Excel Save')}</button>`
+      : '';
+
     return `
 <div class="table-wrapper">
   <div class="table-toolbar">
     <span class="table-info">${t('{0} rows', rowCount)}</span>
+    ${excelSaveButton}
     <button class="table-filter-btn" onclick="TabulatorGrid.clearFilters('${blockId}-tabulator')" title="${t('Clear all filters')}">🧹 ${t('Clear Filters')}</button>
   </div>
   <div class="tabulator-container deferred-loading" id="${blockId}-tabulator"
@@ -3519,6 +3741,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         file: block.file,
         key: block.key,
         type: block.type,
+        maxRows: block.maxRows,
+        tailRows: block.tailRows,
+        isExcel: /\.(xlsx|xlsm|xlsb|xls)$/i.test(block.absoluteFilePath || ''),
         min: block.min,
         max: block.max,
         step: block.step || 1,
@@ -3732,9 +3957,37 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
       }
 
+      var excelPendingByBlock = {};
+
       function updateTableCell(blockId, rowIndex, colKey, value) {
         const data = blockData[blockId];
         if (!data) return;
+
+        if (data.isExcel) {
+          if (!excelPendingByBlock[blockId]) {
+            excelPendingByBlock[blockId] = [];
+          }
+          excelPendingByBlock[blockId].push({
+            rowIndex: rowIndex,
+            colKey: colKey,
+            value: value
+          });
+
+          var excelContainer = document.getElementById(blockId + '-tabulator');
+          if (excelContainer) {
+            var blockEl = excelContainer.closest('.config-block');
+            if (blockEl) {
+              blockEl.classList.add('updated');
+            }
+            var tableWrapper = excelContainer.closest('.table-wrapper');
+            var toolbarInfo = tableWrapper ? tableWrapper.querySelector('.table-info') : null;
+            if (toolbarInfo) {
+              var pendingCount = excelPendingByBlock[blockId].length;
+              toolbarInfo.textContent = (toolbarInfo.textContent || '').replace(/\\s*\\|\\s*pending:\\s*\\d+$/i, '') + ' | pending: ' + pendingCount;
+            }
+          }
+          return;
+        }
 
         vscode.postMessage({
           type: 'updateTableCell',
@@ -3744,19 +3997,40 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           key: data.key,
           rowIndex: rowIndex,
           colKey: colKey,
-          value: value
+          value: value,
+          maxRows: data.maxRows,
+          tailRows: data.tailRows
         });
 
         // Flash the config block
-        const container = document.getElementById(blockId + '-tabulator');
-        if (container) {
-          const block = container.closest('.config-block');
+        const tableContainer = document.getElementById(blockId + '-tabulator');
+        if (tableContainer) {
+          const block = tableContainer.closest('.config-block');
           if (block) {
             block.classList.remove('updated');
             void block.offsetWidth;
             block.classList.add('updated');
           }
         }
+      }
+
+      function saveExcelTable(blockId) {
+        const data = blockData[blockId];
+        if (!data || !data.isExcel) return;
+        const pending = excelPendingByBlock[blockId] || [];
+        if (!pending.length) {
+          showCopyToast('No pending Excel edits');
+          return;
+        }
+        vscode.postMessage({
+          type: 'saveExcelTable',
+          blockId: data.blockId,
+          file: data.file,
+          key: data.key,
+          maxRows: data.maxRows,
+          tailRows: data.tailRows,
+          updates: pending
+        });
       }
 
       /** Initialize all Tabulator table instances */
@@ -3783,11 +4057,13 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
 
         try {
           var rowLocations = msg.rowLocations || [];
-          TabulatorGrid.create(containerId, msg.columns, msg.rows, {
+          var callbacks = {
             onCellEdited: function(rowIndex, colKey, value) {
               updateTableCell(msg.blockId, rowIndex, colKey, value);
-            },
-            onGotoSource: function(rowIndex) {
+            }
+          };
+          if (msg.enableGotoSource !== false) {
+            callbacks.onGotoSource = function(rowIndex) {
               var loc = rowLocations[rowIndex];
               if (loc && loc.file && loc.line) {
                 vscode.postMessage({
@@ -3796,8 +4072,9 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
                   line: loc.line
                 });
               }
-            }
-          });
+            };
+          }
+          TabulatorGrid.create(containerId, msg.columns, msg.rows, callbacks);
           // Fade-in animation
           container.classList.add('block-loaded');
         } catch (e) {
@@ -4018,6 +4295,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         }
         if (msg && msg.type === 'initBlock') {
           initDeferredBlock(msg);
+        }
+        if (msg && msg.type === 'excelSaved') {
+          var blockId = msg.blockId;
+          if (blockId && excelPendingByBlock[blockId]) {
+            delete excelPendingByBlock[blockId];
+          }
         }
       });
 
@@ -4381,5 +4664,127 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         vscode.postMessage({ type: 'openLink', href: href });
       });
     `;
+  }
+
+  private resolveExcelSheetName(workbook: XLSX.WorkBook, requested: string): string | null {
+    if (!workbook || !Array.isArray(workbook.SheetNames) || workbook.SheetNames.length === 0) {
+      return null;
+    }
+    if (!requested) {
+      return workbook.SheetNames[0];
+    }
+    if (workbook.SheetNames.includes(requested)) {
+      return requested;
+    }
+    const normalized = requested.trim().toLowerCase();
+    const matched = workbook.SheetNames.find(n => n.toLowerCase() === normalized);
+    return matched || null;
+  }
+
+  private resolveTableReadOptions(
+    maxRows: number | undefined,
+    tailRows: number | undefined,
+    totalRows: number
+  ): { start: number; end: number } {
+    const normalizedMaxRows = Number.isInteger(maxRows) && (maxRows as number) > 0
+      ? Math.min(maxRows as number, SmartMarkdownEditorProvider.MAX_TABLE_ROWS_CAP)
+      : totalRows;
+    const normalizedTailRows = Number.isInteger(tailRows) && (tailRows as number) > 0
+      ? (tailRows as number)
+      : undefined;
+    const start = normalizedTailRows !== undefined
+      ? Math.max(0, totalRows - Math.min(normalizedTailRows, totalRows))
+      : 0;
+    const end = Math.min(totalRows, start + normalizedMaxRows);
+    return { start, end };
+  }
+
+  private readExcelWorkbook(sourcePath: string): XLSX.WorkBook {
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(vscode.l10n.t('File not found: {0}', sourcePath));
+    }
+    try {
+      fs.accessSync(sourcePath, fs.constants.R_OK);
+      const buffer = fs.readFileSync(sourcePath);
+      return XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    } catch (error) {
+      throw new Error(
+        vscode.l10n.t(
+          'Cannot read Excel file "{0}": {1}',
+          sourcePath,
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+    }
+  }
+
+  private writeExcelWorkbook(workbook: XLSX.WorkBook, sourcePath: string): void {
+    try {
+      const out = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      fs.writeFileSync(sourcePath, out);
+    } catch (error) {
+      throw new Error(
+        vscode.l10n.t(
+          'cannot save file {0}: {1}',
+          sourcePath,
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+    }
+  }
+
+  private async writeExcelWithExcelJs(
+    sourcePath: string,
+    sheetName: string,
+    maxRows: number | undefined,
+    tailRows: number | undefined,
+    updates: Array<{ rowIndex: number; colKey: string; value: any }>
+  ): Promise<void> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(sourcePath);
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) {
+      throw new Error(vscode.l10n.t('Worksheet not found: {0}', sheetName));
+    }
+
+    const headerRow = worksheet.getRow(1);
+    const headerValues = Array.isArray(headerRow.values) ? headerRow.values.slice(1) : [];
+    const headers = headerValues.map((h, idx) => {
+      if (h === null || h === undefined || String(h).trim() === '') {
+        return `col_${idx + 1}`;
+      }
+      return String(h).trim();
+    });
+
+    if (headers.length === 0) {
+      throw new Error(vscode.l10n.t('Worksheet has no header row'));
+    }
+
+    const totalRows = Math.max(0, worksheet.actualRowCount - 1);
+    const options = this.resolveTableReadOptions(maxRows, tailRows, totalRows);
+    const start = options.start;
+    const end = options.end;
+    const visibleCount = Math.max(0, end - start);
+
+    for (const change of updates) {
+      const colIndex = headers.indexOf(change.colKey);
+      if (colIndex < 0) {
+        throw new Error(vscode.l10n.t('Field not found: {0}', change.colKey));
+      }
+      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= visibleCount) {
+        throw new Error(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
+      }
+      const sourceDataRowIndex = start + change.rowIndex;
+      const excelRowNumber = sourceDataRowIndex + 2; // row 1 is header
+      const excelColNumber = colIndex + 1;
+      const cell = worksheet.getRow(excelRowNumber).getCell(excelColNumber);
+      if (change.value === null || change.value === undefined || change.value === '') {
+        cell.value = null;
+      } else {
+        cell.value = change.value as any;
+      }
+    }
+
+    await workbook.xlsx.writeFile(sourcePath);
   }
 }

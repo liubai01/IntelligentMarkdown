@@ -4,6 +4,7 @@
 
 export { LuaParser } from './parser/luaParser';
 export { JsonParser, parseJsonPath } from './parser/jsonParser';
+export { ExcelParser } from './parser/excelParser';
 export { ConfigBlockParser } from './parser/configBlockParser';
 export { LuaPatcher } from './patcher/luaPatcher';
 export { JsonPatcher } from './patcher/jsonPatcher';

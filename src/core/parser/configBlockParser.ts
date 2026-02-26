@@ -94,7 +94,9 @@ export class ConfigBlockParser {
         unit: parsed.unit,
         readonly: parsed.readonly,
         options: parsed.options,
-        columns: parsed.columns
+        columns: parsed.columns,
+        maxRows: parsed['max-rows'] ?? parsed.maxRows,
+        tailRows: parsed['tail-rows'] ?? parsed.tailRows
       };
 
       // Handle range field
@@ -155,6 +157,16 @@ export class ConfigBlockParser {
       case 'table':
         if (!block.columns || !Array.isArray(block.columns) || block.columns.length === 0) {
           errors.push('table type requires columns array');
+        }
+        if (block.maxRows !== undefined) {
+          if (!Number.isInteger(block.maxRows) || block.maxRows <= 0) {
+            errors.push('maxRows must be a positive integer');
+          }
+        }
+        if (block.tailRows !== undefined) {
+          if (!Number.isInteger(block.tailRows) || block.tailRows <= 0) {
+            errors.push('tailRows must be a positive integer');
+          }
         }
         break;
     }
