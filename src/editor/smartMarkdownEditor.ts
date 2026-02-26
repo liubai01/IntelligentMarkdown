@@ -645,6 +645,7 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       key: string;
       maxRows?: number;
       tailRows?: number;
+      sourceRowIndices?: Array<number | null>;
       updates?: Array<{ rowIndex: number; colKey: string; value: any }>;
     }
   ): Promise<boolean> {
@@ -671,66 +672,44 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
         fs.accessSync(sourcePath, fs.constants.W_OK);
         // For .xlsx, use exceljs to keep existing formatting/styles as much as possible.
         if (/\.xlsx$/i.test(sourcePath)) {
-          await this.writeExcelWithExcelJs(sourcePath, message.key, message.maxRows, message.tailRows, updates);
+          try {
+            await this.writeExcelWithExcelJs(
+              sourcePath,
+              message.key,
+              message.maxRows,
+              message.tailRows,
+              message.sourceRowIndices,
+              updates
+            );
+          } catch (excelJsError) {
+            // Fallback path for workbooks with unsupported conditional formatting rules.
+            const workbook = this.readExcelWorkbook(sourcePath);
+            this.applyUpdatesToXlsxWorkbook(
+              workbook,
+              message.key,
+              message.maxRows,
+              message.tailRows,
+              message.sourceRowIndices,
+              updates
+            );
+            this.writeExcelWorkbook(workbook, sourcePath);
+            vscode.window.showWarningMessage(
+              vscode.l10n.t(
+                'Excel format-preserving save failed, used compatibility mode: {0}. Some styles may change.',
+                excelJsError instanceof Error ? excelJsError.message : String(excelJsError)
+              )
+            );
+          }
         } else {
           const workbook = this.readExcelWorkbook(sourcePath);
-          const worksheetName = this.resolveExcelSheetName(workbook, message.key);
-          if (!worksheetName) {
-            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', message.key));
-            return false;
-          }
-          const sheet = workbook.Sheets[worksheetName];
-          if (!sheet) {
-            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
-            return false;
-          }
-          const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
-            header: 1,
-            defval: null,
-            raw: true
-          });
-          if (!rows2d || rows2d.length === 0) {
-            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet has no header row'));
-            return false;
-          }
-          const headerRow = rows2d[0] || [];
-          const headers = headerRow.map((h, idx) => {
-            if (h === null || h === undefined || String(h).trim() === '') {
-              return `col_${idx + 1}`;
-            }
-            return String(h).trim();
-          });
-          const totalRows = Math.max(0, rows2d.length - 1);
-          const options = this.resolveTableReadOptions(message.maxRows, message.tailRows, totalRows);
-          const start = options.start;
-          const end = options.end;
-          const visibleCount = Math.max(0, end - start);
-
-          for (const change of updates) {
-            const colIndex = headers.indexOf(change.colKey);
-            if (colIndex < 0) {
-              vscode.window.showErrorMessage(vscode.l10n.t('Field not found: {0}', change.colKey));
-              return false;
-            }
-            if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= visibleCount) {
-              vscode.window.showErrorMessage(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
-              return false;
-            }
-            const sourceDataRowIndex = start + change.rowIndex;
-            const targetSheetRow = sourceDataRowIndex + 1;
-            const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
-            if (change.value === null || change.value === undefined || change.value === '') {
-              delete (sheet as any)[targetCell];
-            } else if (typeof change.value === 'number') {
-              (sheet as any)[targetCell] = { t: 'n', v: change.value };
-            } else if (typeof change.value === 'boolean') {
-              (sheet as any)[targetCell] = { t: 'b', v: change.value };
-            } else if (change.value instanceof Date) {
-              (sheet as any)[targetCell] = { t: 'd', v: change.value };
-            } else {
-              (sheet as any)[targetCell] = { t: 's', v: String(change.value) };
-            }
-          }
+          this.applyUpdatesToXlsxWorkbook(
+            workbook,
+            message.key,
+            message.maxRows,
+            message.tailRows,
+            message.sourceRowIndices,
+            updates
+          );
           this.writeExcelWorkbook(workbook, sourcePath);
           vscode.window.showWarningMessage(
             vscode.l10n.t('Format-preserving save is optimized for .xlsx. Current format may lose styles.')
@@ -766,6 +745,12 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
     markdownUri?: vscode.Uri
   ): Promise<void> {
     try {
+      if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(message.file || '')) {
+        const folderUri = vscode.Uri.file(path.dirname(message.file));
+        await vscode.env.openExternal(folderUri);
+        return;
+      }
+
       const uri = vscode.Uri.file(message.file);
       const position = new vscode.Position(Math.max(0, message.line - 1), 0);
 
@@ -3743,6 +3728,12 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         type: block.type,
         maxRows: block.maxRows,
         tailRows: block.tailRows,
+        sourceRowIndices: Array.isArray(block.luaNode?.tableData)
+          ? block.luaNode!.tableData!.map((row: any) => {
+            const idx = row?.data?.__sourceRowIndex;
+            return Number.isInteger(idx) ? idx : null;
+          })
+          : undefined,
         isExcel: /\.(xlsx|xlsm|xlsb|xls)$/i.test(block.absoluteFilePath || ''),
         min: block.min,
         max: block.max,
@@ -4029,6 +4020,7 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
           key: data.key,
           maxRows: data.maxRows,
           tailRows: data.tailRows,
+          sourceRowIndices: data.sourceRowIndices,
           updates: pending
         });
       }
@@ -4733,15 +4725,85 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     }
   }
 
+  private applyUpdatesToXlsxWorkbook(
+    workbook: XLSX.WorkBook,
+    sheetKey: string,
+    maxRows: number | undefined,
+    tailRows: number | undefined,
+    sourceRowIndices: Array<number | null> | undefined,
+    updates: Array<{ rowIndex: number; colKey: string; value: any }>
+  ): void {
+    const worksheetName = this.resolveExcelSheetName(workbook, sheetKey);
+    if (!worksheetName) {
+      throw new Error(vscode.l10n.t('Worksheet not found: {0}', sheetKey));
+    }
+    const sheet = workbook.Sheets[worksheetName];
+    if (!sheet) {
+      throw new Error(vscode.l10n.t('Worksheet not found: {0}', worksheetName));
+    }
+    const rows2d = XLSX.utils.sheet_to_json<any[]>(sheet, {
+      header: 1,
+      defval: null,
+      raw: true
+    });
+    if (!rows2d || rows2d.length === 0) {
+      throw new Error(vscode.l10n.t('Worksheet has no header row'));
+    }
+    const headerRow = rows2d[0] || [];
+    const headers = headerRow.map((h, idx) => {
+      if (h === null || h === undefined || String(h).trim() === '') {
+        return `col_${idx + 1}`;
+      }
+      return String(h).trim();
+    });
+    const totalRows = Math.max(0, rows2d.length - 1);
+    const options = this.resolveTableReadOptions(maxRows, tailRows, totalRows);
+    const start = options.start;
+    const end = options.end;
+    const visibleCount = Math.max(0, end - start);
+    const mappedVisibleCount = Array.isArray(sourceRowIndices) ? sourceRowIndices.length : visibleCount;
+
+    for (const change of updates) {
+      const colIndex = headers.indexOf(change.colKey);
+      if (colIndex < 0) {
+        throw new Error(vscode.l10n.t('Field not found: {0}', change.colKey));
+      }
+      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= mappedVisibleCount) {
+        throw new Error(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
+      }
+      const sourceDataRowIndex = this.resolveSourceDataRowIndex(
+        change.rowIndex,
+        start,
+        visibleCount,
+        sourceRowIndices
+      );
+      const targetSheetRow = sourceDataRowIndex + 1;
+      const targetCell = XLSX.utils.encode_cell({ r: targetSheetRow, c: colIndex });
+      if (change.value === null || change.value === undefined || change.value === '') {
+        delete (sheet as any)[targetCell];
+      } else if (typeof change.value === 'number') {
+        (sheet as any)[targetCell] = { t: 'n', v: change.value };
+      } else if (typeof change.value === 'boolean') {
+        (sheet as any)[targetCell] = { t: 'b', v: change.value };
+      } else if (change.value instanceof Date) {
+        (sheet as any)[targetCell] = { t: 'd', v: change.value };
+      } else {
+        (sheet as any)[targetCell] = { t: 's', v: String(change.value) };
+      }
+    }
+  }
+
   private async writeExcelWithExcelJs(
     sourcePath: string,
     sheetName: string,
     maxRows: number | undefined,
     tailRows: number | undefined,
+    sourceRowIndices: Array<number | null> | undefined,
     updates: Array<{ rowIndex: number; colKey: string; value: any }>
   ): Promise<void> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(sourcePath);
+    this.sanitizeExcelJsConditionalFormats(workbook);
     const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) {
       throw new Error(vscode.l10n.t('Worksheet not found: {0}', sheetName));
@@ -4765,16 +4827,22 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     const start = options.start;
     const end = options.end;
     const visibleCount = Math.max(0, end - start);
+    const mappedVisibleCount = Array.isArray(sourceRowIndices) ? sourceRowIndices.length : visibleCount;
 
     for (const change of updates) {
       const colIndex = headers.indexOf(change.colKey);
       if (colIndex < 0) {
         throw new Error(vscode.l10n.t('Field not found: {0}', change.colKey));
       }
-      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= visibleCount) {
+      if (!Number.isInteger(change.rowIndex) || change.rowIndex < 0 || change.rowIndex >= mappedVisibleCount) {
         throw new Error(vscode.l10n.t('Invalid row index: {0}', change.rowIndex));
       }
-      const sourceDataRowIndex = start + change.rowIndex;
+      const sourceDataRowIndex = this.resolveSourceDataRowIndex(
+        change.rowIndex,
+        start,
+        visibleCount,
+        sourceRowIndices
+      );
       const excelRowNumber = sourceDataRowIndex + 2; // row 1 is header
       const excelColNumber = colIndex + 1;
       const cell = worksheet.getRow(excelRowNumber).getCell(excelColNumber);
@@ -4786,5 +4854,55 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
     }
 
     await workbook.xlsx.writeFile(sourcePath);
+  }
+
+  private resolveSourceDataRowIndex(
+    rowIndex: number,
+    start: number,
+    visibleCount: number,
+    sourceRowIndices?: Array<number | null>
+  ): number {
+    if (Array.isArray(sourceRowIndices) && sourceRowIndices.length > 0) {
+      if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= sourceRowIndices.length) {
+        throw new Error(vscode.l10n.t('Invalid row index: {0}', rowIndex));
+      }
+      const mapped = sourceRowIndices[rowIndex];
+      if (!Number.isInteger(mapped) || (mapped as number) < 0) {
+        throw new Error(vscode.l10n.t('Invalid source row mapping at index: {0}', rowIndex));
+      }
+      return mapped as number;
+    }
+    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= visibleCount) {
+      throw new Error(vscode.l10n.t('Invalid row index: {0}', rowIndex));
+    }
+    return start + rowIndex;
+  }
+
+  private sanitizeExcelJsConditionalFormats(workbook: ExcelJS.Workbook): void {
+    for (const sheet of workbook.worksheets as any[]) {
+      const list = sheet.conditionalFormattings;
+      if (!Array.isArray(list)) {
+        continue;
+      }
+      const sanitized = [];
+      for (const cf of list) {
+        if (!cf || !Array.isArray(cf.rules)) {
+          continue;
+        }
+        const rules = cf.rules.filter((rule: any) => {
+          if (!rule || typeof rule !== 'object') {
+            return false;
+          }
+          if (rule.type === 'expression') {
+            return Array.isArray(rule.formulae) && rule.formulae.length > 0 && rule.formulae[0] !== undefined;
+          }
+          return true;
+        });
+        if (rules.length > 0) {
+          sanitized.push({ ...cf, rules });
+        }
+      }
+      sheet.conditionalFormattings = sanitized;
+    }
   }
 }

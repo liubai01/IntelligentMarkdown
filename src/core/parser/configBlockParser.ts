@@ -96,7 +96,11 @@ export class ConfigBlockParser {
         options: parsed.options,
         columns: parsed.columns,
         maxRows: parsed['max-rows'] ?? parsed.maxRows,
-        tailRows: parsed['tail-rows'] ?? parsed.tailRows
+        tailRows: parsed['tail-rows'] ?? parsed.tailRows,
+        filterColumn: parsed['filter-column'] ?? parsed.filterColumn,
+        filterValues: parsed['filter-values'] ?? parsed.filterValues,
+        filterSourceFile: parsed['filter-source-file'] ?? parsed.filterSourceFile,
+        filterSourceKey: parsed['filter-source-key'] ?? parsed.filterSourceKey
       };
 
       // Handle range field
@@ -167,6 +171,15 @@ export class ConfigBlockParser {
           if (!Number.isInteger(block.tailRows) || block.tailRows <= 0) {
             errors.push('tailRows must be a positive integer');
           }
+        }
+        if (block.filterValues !== undefined && !Array.isArray(block.filterValues)) {
+          errors.push('filterValues must be an array');
+        }
+        if (block.filterSourceFile !== undefined && typeof block.filterSourceFile !== 'string') {
+          errors.push('filterSourceFile must be a string');
+        }
+        if (block.filterSourceKey !== undefined && typeof block.filterSourceKey !== 'string') {
+          errors.push('filterSourceKey must be a string');
         }
         break;
     }

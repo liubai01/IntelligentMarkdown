@@ -9,6 +9,8 @@ import { LuaParseResult } from '../../types';
 export interface ExcelTableReadOptions {
   maxRows?: number;
   tailRows?: number;
+  filterColumn?: string;
+  filterValues?: Array<string | number>;
 }
 
 export interface ExcelTableRow {
@@ -120,17 +122,38 @@ export class ExcelParser {
       ? (options.tailRows as number)
       : undefined;
 
-    let start = 0;
-    let end = totalRows;
-    if (tailRows !== undefined) {
-      const tailCount = Math.min(tailRows, totalRows);
-      start = totalRows - tailCount;
+    let filteredIndices = Array.from({ length: totalRows }, (_, i) => i);
+    const filterColumn = options.filterColumn;
+    const filterValues = Array.isArray(options.filterValues) ? options.filterValues : undefined;
+    if (filterColumn && filterValues && filterValues.length > 0) {
+      const colIndex = headers.indexOf(filterColumn);
+      if (colIndex >= 0) {
+        const allowed = new Set(filterValues.map(v => String(v)));
+        filteredIndices = filteredIndices.filter((rowIdx) => {
+          const row = allDataRows[rowIdx] || [];
+          const raw = row[colIndex];
+          return allowed.has(String(raw));
+        });
+      }
     }
-    end = Math.min(totalRows, start + maxRows);
+
+    const filteredTotal = filteredIndices.length;
+    if (filteredTotal === 0) {
+      return [];
+    }
+
+    let start = 0;
+    let end = filteredTotal;
+    if (tailRows !== undefined) {
+      const tailCount = Math.min(tailRows, filteredTotal);
+      start = filteredTotal - tailCount;
+    }
+    end = Math.min(filteredTotal, start + maxRows);
 
     const result: ExcelTableRow[] = [];
     for (let i = start; i < end; i++) {
-      const row = allDataRows[i] || [];
+      const sourceIndex = filteredIndices[i];
+      const row = allDataRows[sourceIndex] || [];
       const rowData: Record<string, any> = {};
       const rowRanges: Record<string, [number, number]> = {};
       for (let c = 0; c < headers.length; c++) {
@@ -138,13 +161,13 @@ export class ExcelParser {
         rowData[key] = row[c] === undefined ? null : row[c];
         rowRanges[key] = [0, 0];
       }
-      rowData.__sourceRowIndex = i;
+      rowData.__sourceRowIndex = sourceIndex;
       result.push({
         data: rowData,
         ranges: rowRanges,
         rowLoc: {
-          start: { line: i + 2, column: 0 },
-          end: { line: i + 2, column: 0 }
+          start: { line: sourceIndex + 2, column: 0 },
+          end: { line: sourceIndex + 2, column: 0 }
         }
       });
     }

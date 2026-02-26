@@ -121,6 +121,13 @@ export class LuaLinker {
       const parserInfo = await this.getParser(absolutePath);
       const parser = parserInfo.parser;
       const tableReadOptions = this.resolveTableReadOptions(block.maxRows, block.tailRows);
+      if (isExcelFile && block.type === 'table') {
+        const filterOpts = await this.resolveExcelFilterOptions(block, baseDir);
+        if (filterOpts) {
+          tableReadOptions.filterColumn = filterOpts.filterColumn;
+          tableReadOptions.filterValues = filterOpts.filterValues;
+        }
+      }
 
       // Choose find method based on type
       const result = !isJsonFile && !isExcelFile && block.type === 'code'
@@ -226,7 +233,10 @@ export class LuaLinker {
     return { parser, format };
   }
 
-  private resolveTableReadOptions(maxRows?: number, tailRows?: number): { maxRows?: number; tailRows?: number } {
+  private resolveTableReadOptions(
+    maxRows?: number,
+    tailRows?: number
+  ): { maxRows?: number; tailRows?: number; filterColumn?: string; filterValues?: Array<string | number> } {
     const normalizedMaxRows = Number.isInteger(maxRows) && (maxRows as number) > 0
       ? Math.min(maxRows as number, LuaLinker.MAX_TABLE_ROWS_CAP)
       : undefined;
@@ -237,6 +247,72 @@ export class LuaLinker {
       maxRows: normalizedMaxRows,
       tailRows: normalizedTailRows
     };
+  }
+
+  private async resolveExcelFilterOptions(
+    block: ParsedConfigBlock,
+    baseDir: string
+  ): Promise<{ filterColumn: string; filterValues: Array<string | number> } | null> {
+    const filterColumn = block.filterColumn;
+    if (!filterColumn || typeof filterColumn !== 'string' || filterColumn.trim() === '') {
+      return null;
+    }
+
+    if (Array.isArray(block.filterValues) && block.filterValues.length > 0) {
+      return {
+        filterColumn,
+        filterValues: block.filterValues
+      };
+    }
+
+    if (!block.filterSourceFile || !block.filterSourceKey) {
+      return null;
+    }
+
+    const sourcePath = this.pathResolver.resolve(baseDir, block.filterSourceFile);
+    if (!fs.existsSync(sourcePath)) {
+      return null;
+    }
+
+    try {
+      const sourceParserInfo = await this.getParser(sourcePath);
+      const sourceParser = sourceParserInfo.parser;
+      const result = sourceParser.findNodeByPath(block.filterSourceKey);
+      if (!result.success || !result.node) {
+        return null;
+      }
+
+      const extracted = this.extractFilterValuesFromNode(result.node.value);
+      if (!extracted || extracted.length === 0) {
+        return null;
+      }
+
+      return {
+        filterColumn,
+        filterValues: extracted
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private extractFilterValuesFromNode(value: any): Array<string | number> {
+    if (!value || typeof value !== 'object') {
+      return [];
+    }
+    if (Array.isArray(value)) {
+      return value
+        .filter(v => typeof v === 'string' || typeof v === 'number')
+        .map(v => typeof v === 'string' ? v.trim() : v);
+    }
+
+    const out: Array<string | number> = [];
+    for (const v of Object.values(value)) {
+      if (typeof v === 'string' || typeof v === 'number') {
+        out.push(typeof v === 'string' ? v.trim() : v);
+      }
+    }
+    return out;
   }
 
   /**

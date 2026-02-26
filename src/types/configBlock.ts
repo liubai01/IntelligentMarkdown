@@ -71,6 +71,14 @@ export interface ConfigBlock {
   maxRows?: number;
   /** Read last N rows from table source first (for large datasets) */
   tailRows?: number;
+  /** Filter column name for table rows (mainly for Excel table filtering) */
+  filterColumn?: string;
+  /** Allowed values for table filter column */
+  filterValues?: Array<string | number>;
+  /** Optional source file for dynamic filter values */
+  filterSourceFile?: string;
+  /** Optional key path in source file used to derive filter values */
+  filterSourceKey?: string;
 }
 
 /** Parsed config block (with position info) */

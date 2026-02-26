@@ -76,6 +76,10 @@ The `file` target may point to `.lua`, `.json`, `.jsonc`, `.xlsx`, `.xlsm`, `.xl
 | `columns`  | `TableColumn[]`     | `table`                  | Column definitions for table     |
 | `maxRows` / `max-rows` | `number` | `table` | Max rows returned to preview (hard capped by extension) |
 | `tailRows` / `tail-rows` | `number` | `table` | Read only the last N rows before applying `maxRows` |
+| `filterColumn` / `filter-column` | `string` | `table` | Column name used for row filtering (Excel) |
+| `filterValues` / `filter-values` | `array` | `table` | Explicit allowed values for `filterColumn` |
+| `filterSourceFile` / `filter-source-file` | `string` | `table` | File used to derive filter values dynamically |
+| `filterSourceKey` / `filter-source-key` | `string` | `table` | Key path in `filterSourceFile` to derive filter values |
 
 ---
 
@@ -609,6 +613,27 @@ Notes:
 - For Excel, `key` maps to sheet name.
 - First row is treated as header.
 - `tailRows` applies before `maxRows`.
+</details>
+
+<details>
+<summary><b>Excel table filtered by LocalizeStrings IDs</b></summary>
+
+```lua-config
+file: ./Survive/Source/xls/appendix_xls/本地化表.xlsx
+key: 词条
+type: table
+label: Voice Localize Mapping
+filterColumn: 文本id
+filterSourceFile: ./UGC_Assistant_CopilotVoiceFeature.lua
+filterSourceKey: LocalizeStrings
+maxRows: 200
+columns:
+  - { key: "文本id", label: "文本ID", type: "number", width: "140px", readonly: true }
+  - { key: "中文", label: "中文", type: "string", width: "280px", readonly: true }
+  - { key: "描述", label: "描述", type: "string", width: "240px", readonly: true }
+```
+
+`filterSourceKey: LocalizeStrings` means the extension will parse `LocalizeStrings = { ... }` and use its values as filtering IDs.
 </details>
 
 <details>
