@@ -32,6 +32,7 @@ import {
   slugify,
 } from './utils/markdownUiUtils';
 import MarkdownIt = require('markdown-it');
+import hljs from 'highlight.js';
 import * as yaml from 'yaml';
 
 export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
@@ -1044,7 +1045,16 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       html: true,
       linkify: true,
       breaks: false,
-      typographer: false
+      typographer: false,
+      highlight: (code: string, lang: string) => {
+        let highlighted = '';
+        if (lang && hljs.getLanguage(lang)) {
+          highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+        } else {
+          highlighted = escapeHtml(code);
+        }
+        return `<pre class="hljs"><code class="language-${escapeHtml(lang || 'plaintext')}">${highlighted}</code></pre>`;
+      }
     });
 
     const defaultHeadingOpen = md.renderer.rules.heading_open;
@@ -2276,6 +2286,77 @@ ${block.min !== undefined && block.max !== undefined ? `<span class="range-hint"
         background-color: var(--color-canvas-subtle);
         border-radius: 6px;
         font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+
+      pre {
+        margin: 10px 0;
+        padding: 10px 12px;
+        overflow-x: auto;
+        border-radius: 8px;
+        border: 1px solid var(--color-border-muted);
+        background: var(--color-canvas-subtle);
+      }
+
+      pre code {
+        display: block;
+        padding: 0;
+        margin: 0;
+        font-size: 13px;
+        white-space: pre;
+        background: transparent;
+        border-radius: 0;
+      }
+
+      .hljs-keyword,
+      .hljs-selector-tag,
+      .hljs-literal,
+      .hljs-name,
+      .hljs-strong {
+        color: #cf222e;
+      }
+
+      .hljs-string,
+      .hljs-attr,
+      .hljs-template-tag {
+        color: #0a3069;
+      }
+
+      .hljs-number,
+      .hljs-symbol,
+      .hljs-variable,
+      .hljs-params {
+        color: #0550ae;
+      }
+
+      .hljs-comment,
+      .hljs-quote {
+        color: var(--color-fg-muted);
+      }
+
+      table:not(.tabulator-table) {
+        width: 100%;
+        margin: 10px 0;
+        border-collapse: collapse;
+        border-spacing: 0;
+        display: block;
+        overflow-x: auto;
+      }
+
+      table:not(.tabulator-table) th,
+      table:not(.tabulator-table) td {
+        border: 1px solid var(--color-border-muted);
+        padding: 6px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      table:not(.tabulator-table) thead th {
+        background: var(--color-canvas-subtle);
+        font-weight: 600;
+      }
+
+      table:not(.tabulator-table) tbody tr:nth-child(2n) {
+        background: rgba(128, 128, 128, 0.06);
       }
 
       strong { font-weight: 600; }
