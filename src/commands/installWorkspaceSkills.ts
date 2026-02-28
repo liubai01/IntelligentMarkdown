@@ -33,6 +33,31 @@ description: Guides config.md authoring and maintenance for Lua/JSON/Excel linke
 - Code block editing and save-back
 - Config manager tree view and focus mode
 
+## Minimal syntax quick reference
+- Config block (YAML in fenced block):
+  \`\`\`\`markdown
+  \`\`\`lua-config
+  file: ./path/to/source.lua
+  key: Game.Config.Value
+  type: number
+  label: Display Name
+  \`\`\`
+  \`\`\`\`
+- Mermaid block:
+  \`\`\`\`markdown
+  \`\`\`mermaid
+  flowchart TD
+    A --> B
+  \`\`\`
+  \`\`\`\`
+- Probe link:
+  \`[Jump](probe://./game.lua#GameConfig.onInit)\`
+
+## Syntax authority
+- If syntax is unclear, always consult:
+  https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md
+- Do not invent new config block keys or custom grammar.
+
 ## Command hints
 - \`Open Config Preview\`
 - \`Open Config Window Manager\`
@@ -69,6 +94,31 @@ const CODEBUDDY_SKILL = `# config.md 技能卡（CodeBuddy）
 - Mermaid 探针跳转
 - 代码块编辑回写
 - Config 管理器与专注模式
+
+## 最精简语法集合
+- 配置块（\`lua-config\`）：
+  \`\`\`\`markdown
+  \`\`\`lua-config
+  file: ./path/to/source.lua
+  key: Game.Config.Value
+  type: number
+  label: 展示名
+  \`\`\`
+  \`\`\`\`
+- Mermaid：
+  \`\`\`\`markdown
+  \`\`\`mermaid
+  flowchart TD
+    A --> B
+  \`\`\`
+  \`\`\`\`
+- Probe 跳转：
+  \`[跳转](probe://./game.lua#GameConfig.onInit)\`
+
+## 语法查询规则
+- 若模型不确定语法，必须先查：
+  https://github.com/liubai01/IntelligentMarkdown/blob/master/docs/lua-config-reference.md
+- 禁止自造字段名或自定义语法。
 
 ## 常用入口
 - Open Config Preview
