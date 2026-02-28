@@ -2,7 +2,7 @@
   "name": "config-md",
   "displayName": "config.md",
   "description": "Markdown-native, plain-text config and spec workflows — visual editing + wizard prompt generation for local CI-style iteration.",
-  "version": "0.6.15",
+  "version": "0.6.16",
   "publisher": "liubai01",
   "icon": "images/icon.png",
   "repository": {
@@ -54,7 +54,10 @@
     "onCommand:intelligentMarkdown.showVariableValue",
     "onCommand:intelligentMarkdown.refreshBindings",
     "onCommand:intelligentMarkdown.openPreview",
-    "onCommand:intelligentMarkdown.gotoDoc"
+    "onCommand:intelligentMarkdown.gotoDoc",
+    "onCommand:intelligentMarkdown.openConfigManager",
+    "onCommand:intelligentMarkdown.quickAccess",
+    "onView:intelligentMarkdown.configManager"
   ],
   "l10n": "./l10n",
   "main": "./dist/extension.js",
@@ -80,6 +83,35 @@
         "command": "intelligentMarkdown.gotoDoc",
         "title": "Go to Doc Section",
         "category": "config.md"
+      },
+      {
+        "command": "intelligentMarkdown.openConfigManager",
+        "title": "Open Config Window Manager",
+        "category": "config.md",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "intelligentMarkdown.configManager.refresh",
+        "title": "Refresh Config Window Manager",
+        "category": "config.md",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "intelligentMarkdown.configManager.toggleFocus",
+        "title": "Toggle Config Focus Mode",
+        "category": "config.md",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "intelligentMarkdown.configManager.openPreview",
+        "title": "Open Config Preview From Manager",
+        "category": "config.md"
+      },
+      {
+        "command": "intelligentMarkdown.quickAccess",
+        "title": "Quick Access: config.md",
+        "category": "config.md",
+        "icon": "$(symbol-misc)"
       }
     ],
     "menus": {
@@ -94,6 +126,69 @@
         {
           "command": "intelligentMarkdown.openPreview",
           "when": "resourceLangId == markdown"
+        },
+        {
+          "command": "intelligentMarkdown.openConfigManager"
+        },
+        {
+          "command": "intelligentMarkdown.configManager.toggleFocus"
+        },
+        {
+          "command": "intelligentMarkdown.quickAccess"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "intelligentMarkdown.configManager.refresh",
+          "when": "view == intelligentMarkdown.configManager",
+          "group": "navigation"
+        },
+        {
+          "command": "intelligentMarkdown.configManager.toggleFocus",
+          "when": "view == intelligentMarkdown.configManager",
+          "group": "navigation@1"
+        }
+      ],
+      "menubar/view": [
+        {
+          "submenu": "intelligentMarkdown.menubar",
+          "group": "navigation@9"
+        }
+      ],
+      "intelligentMarkdown.menubar": [
+        {
+          "command": "intelligentMarkdown.openConfigManager",
+          "group": "1_open"
+        },
+        {
+          "command": "intelligentMarkdown.openPreview",
+          "group": "1_open"
+        },
+        {
+          "command": "intelligentMarkdown.configManager.toggleFocus",
+          "group": "2_tools"
+        },
+        {
+          "command": "intelligentMarkdown.configManager.refresh",
+          "group": "2_tools"
+        },
+        {
+          "command": "intelligentMarkdown.quickAccess",
+          "group": "0_quick"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "intelligentMarkdown.menubar",
+        "label": "config.md"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "intelligentMarkdown.configManager",
+          "name": "Config.md Window Manager"
         }
       ]
     },

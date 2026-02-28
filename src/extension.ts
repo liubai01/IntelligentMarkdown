@@ -14,6 +14,7 @@ import {
 } from './providers';
 import { showVariableValueCommand } from './commands';
 import { SmartMarkdownEditorProvider } from './editor/smartMarkdownEditor';
+import { ConfigManagerTreeProvider } from './providers/configManagerTreeProvider';
 
 let decorationProvider: LuaConfigDecorationProvider | undefined;
 
@@ -27,6 +28,18 @@ let lastPreviewFocusAt = 0;
  */
 export function activate(context: vscode.ExtensionContext): void {
   let lastActiveDocument: vscode.TextDocument | undefined = vscode.window.activeTextEditor?.document;
+  const configManagerTreeProvider = new ConfigManagerTreeProvider(context);
+  const configManagerTreeView = vscode.window.createTreeView('intelligentMarkdown.configManager', {
+    treeDataProvider: configManagerTreeProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(configManagerTreeView);
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 110);
+  statusBarItem.text = '$(list-tree) config.md';
+  statusBarItem.tooltip = vscode.l10n.t('Open config.md quick access');
+  statusBarItem.command = 'intelligentMarkdown.quickAccess';
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
 
   console.log('Intelligent Markdown for Lua activated');
 
@@ -91,6 +104,85 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'intelligentMarkdown.openPreview',
       () => openPreviewPanel(context)
+    )
+  );
+
+  // Register command: reveal config manager tree
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.openConfigManager',
+      async () => {
+        await configManagerTreeProvider.refresh();
+        await vscode.commands.executeCommand('intelligentMarkdown.configManager.focus');
+      }
+    )
+  );
+
+  // Register command: quick access panel (menu fallback for Cursor IDE)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.quickAccess',
+      async () => {
+        const pick = await vscode.window.showQuickPick(
+          [
+            { label: '$(list-tree) Open Config Window Manager', command: 'intelligentMarkdown.openConfigManager' },
+            { label: '$(open-preview) Open Config Preview', command: 'intelligentMarkdown.openPreview' },
+            { label: '$(eye) Toggle Config Focus Mode', command: 'intelligentMarkdown.configManager.toggleFocus' },
+            { label: '$(refresh) Refresh Config Window Manager', command: 'intelligentMarkdown.configManager.refresh' }
+          ],
+          {
+            title: vscode.l10n.t('config.md Quick Access'),
+            placeHolder: vscode.l10n.t('Choose a config.md action')
+          }
+        );
+
+        if (!pick) {
+          return;
+        }
+
+        await vscode.commands.executeCommand(pick.command);
+      }
+    )
+  );
+
+  // Register command: refresh config manager tree
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.configManager.refresh',
+      () => configManagerTreeProvider.refresh()
+    )
+  );
+
+  // Register command: open selected config.md in preview
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.configManager.openPreview',
+      async (targetUri?: vscode.Uri) => {
+        const uri = targetUri || configManagerTreeView.selection?.[0]?.fileUri;
+        if (!uri) {
+          vscode.window.showInformationMessage(vscode.l10n.t('Select a config.md file first'));
+          return;
+        }
+
+        const document = await vscode.workspace.openTextDocument(uri);
+        await openPreviewForDocument(context, document);
+      }
+    )
+  );
+
+  // Register command: toggle focus mode (hide non-config files)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.configManager.toggleFocus',
+      async () => {
+        const enabled = await configManagerTreeProvider.toggleFocusMode();
+        await configManagerTreeProvider.refresh();
+        vscode.window.showInformationMessage(
+          enabled
+            ? vscode.l10n.t('Config focus mode enabled: explorer now emphasizes *.config.md')
+            : vscode.l10n.t('Config focus mode disabled: explorer file visibility restored')
+        );
+      }
     )
   );
 
