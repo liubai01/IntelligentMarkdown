@@ -2,7 +2,7 @@
   "name": "config-md",
   "displayName": "config.md",
   "description": "Markdown-native, plain-text config and spec workflows — visual editing + wizard prompt generation for local CI-style iteration.",
-  "version": "0.6.18",
+  "version": "0.6.19",
   "publisher": "liubai01",
   "icon": "images/icon.png",
   "repository": {
@@ -98,12 +98,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "intelligentMarkdown.configManager.toggleFocus",
-        "title": "Toggle Config Focus Mode",
-        "category": "config.md",
-        "icon": "$(eye)"
-      },
-      {
         "command": "intelligentMarkdown.configManager.openPreview",
         "title": "Open Config Preview From Manager",
         "category": "config.md"
@@ -138,9 +132,6 @@
           "command": "intelligentMarkdown.openConfigManager"
         },
         {
-          "command": "intelligentMarkdown.configManager.toggleFocus"
-        },
-        {
           "command": "intelligentMarkdown.quickAccess"
         },
         {
@@ -152,11 +143,6 @@
           "command": "intelligentMarkdown.configManager.refresh",
           "when": "view == intelligentMarkdown.configManager",
           "group": "navigation"
-        },
-        {
-          "command": "intelligentMarkdown.configManager.toggleFocus",
-          "when": "view == intelligentMarkdown.configManager",
-          "group": "navigation@1"
         }
       ],
       "menubar/view": [
@@ -173,10 +159,6 @@
         {
           "command": "intelligentMarkdown.openPreview",
           "group": "1_open"
-        },
-        {
-          "command": "intelligentMarkdown.configManager.toggleFocus",
-          "group": "2_tools"
         },
         {
           "command": "intelligentMarkdown.configManager.refresh",

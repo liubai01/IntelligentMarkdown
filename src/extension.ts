@@ -127,7 +127,6 @@ export function activate(context: vscode.ExtensionContext): void {
           [
             { label: '$(list-tree) Open Config Window Manager', command: 'intelligentMarkdown.openConfigManager' },
             { label: '$(open-preview) Open Config Preview', command: 'intelligentMarkdown.openPreview' },
-            { label: '$(eye) Toggle Config Focus Mode', command: 'intelligentMarkdown.configManager.toggleFocus' },
             { label: '$(refresh) Refresh Config Window Manager', command: 'intelligentMarkdown.configManager.refresh' },
             { label: '$(repo-clone) Install Workspace Skills', command: 'intelligentMarkdown.installWorkspaceSkills' }
           ],
@@ -175,22 +174,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const document = await vscode.workspace.openTextDocument(uri);
         await openPreviewForDocument(context, document);
-      }
-    )
-  );
-
-  // Register command: toggle focus mode (hide non-config files)
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'intelligentMarkdown.configManager.toggleFocus',
-      async () => {
-        const enabled = await configManagerTreeProvider.toggleFocusMode();
-        await configManagerTreeProvider.refresh();
-        vscode.window.showInformationMessage(
-          enabled
-            ? vscode.l10n.t('Config focus mode enabled: explorer now emphasizes *.config.md')
-            : vscode.l10n.t('Config focus mode disabled: explorer file visibility restored')
-        );
       }
     )
   );

@@ -1367,7 +1367,6 @@ export class SmartMarkdownEditorProvider implements vscode.CustomTextEditorProvi
       : path.basename(markdownPath);
     const sourceContext = [
       `@file ${markdownRel}`,
-      'Target: update lua-config value blocks in this markdown file only.',
       ''
     ].join('\n');
 

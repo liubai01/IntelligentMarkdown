@@ -12,14 +12,6 @@ interface ConfigTreeNode {
 }
 
 export class ConfigManagerTreeProvider implements vscode.TreeDataProvider<ConfigTreeNode> {
-  private static readonly FOCUS_HIDE_PATTERNS = [
-    '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs',
-    '**/*.lua', '**/*.py', '**/*.java', '**/*.kt', '**/*.go', '**/*.rs',
-    '**/*.c', '**/*.cc', '**/*.cpp', '**/*.h', '**/*.hpp',
-    '**/*.json', '**/*.jsonc', '**/*.yaml', '**/*.yml', '**/*.xml', '**/*.toml',
-    '**/*.ini', '**/*.cfg', '**/*.conf', '**/*.sh', '**/*.ps1', '**/*.bat', '**/*.cmd'
-  ] as const;
-
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<ConfigTreeNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   private roots: ConfigTreeNode[] = [];
@@ -104,7 +96,13 @@ export class ConfigManagerTreeProvider implements vscode.TreeDataProvider<Config
 
     for (const ws of workspaceFolders) {
       const files = filesByWorkspace.get(ws.uri.toString()) || [];
+      if (files.length === 0) {
+        continue;
+      }
       const folderNodes = this.buildFolderNodes(ws.uri, files);
+      if (folderNodes.length === 0) {
+        continue;
+      }
       if (showWorkspaceRoot) {
         roots.push({
           type: 'workspace',
@@ -171,7 +169,8 @@ export class ConfigManagerTreeProvider implements vscode.TreeDataProvider<Config
     }
 
     this.sortNodeChildren(root);
-    return root.children || [];
+    const pruned = this.pruneEmptyFolders(root.children || []);
+    return pruned;
   }
 
   private relativeToWorkspace(relativePath: string, workspaceUri: vscode.Uri): string {
@@ -202,33 +201,20 @@ export class ConfigManagerTreeProvider implements vscode.TreeDataProvider<Config
     }
   }
 
-  async toggleFocusMode(): Promise<boolean> {
-    const config = vscode.workspace.getConfiguration('files');
-    const stateKey = 'intelligentMarkdown.configFocus.backupExcludes';
-    const enabledKey = 'intelligentMarkdown.configFocus.enabled';
-    const enabled = this.extensionContext.workspaceState.get<boolean>(enabledKey, false);
-
-    if (!enabled) {
-      const currentExcludes = config.get<Record<string, boolean>>('exclude') || {};
-      await this.extensionContext.workspaceState.update(stateKey, currentExcludes);
-
-      const nextExcludes: Record<string, boolean> = {
-        ...currentExcludes
-      };
-      for (const pattern of ConfigManagerTreeProvider.FOCUS_HIDE_PATTERNS) {
-        nextExcludes[pattern] = true;
+  private pruneEmptyFolders(nodes: ConfigTreeNode[]): ConfigTreeNode[] {
+    const result: ConfigTreeNode[] = [];
+    for (const node of nodes) {
+      if (node.type === 'file') {
+        result.push(node);
+        continue;
       }
-
-      await config.update('exclude', nextExcludes, vscode.ConfigurationTarget.Workspace);
-      await this.extensionContext.workspaceState.update(enabledKey, true);
-      return true;
+      const children = this.pruneEmptyFolders(node.children || []);
+      if (children.length > 0) {
+        node.children = children;
+        result.push(node);
+      }
     }
-
-    const backup = this.extensionContext.workspaceState.get<Record<string, boolean>>(stateKey);
-    if (backup !== undefined) {
-      await config.update('exclude', backup, vscode.ConfigurationTarget.Workspace);
-    }
-    await this.extensionContext.workspaceState.update(enabledKey, false);
-    return false;
+    return result;
   }
+
 }
