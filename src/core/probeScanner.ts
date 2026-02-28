@@ -162,6 +162,11 @@ export class ProbeScanner {
    * @returns Resolved target or null if not found
    */
   resolveProbe(filePath: string, probeName: string, baseDir: string): ProbeTarget | null {
+    const normalizedProbeName = this.normalizeProbeName(probeName);
+    if (!normalizedProbeName) {
+      return null;
+    }
+
     // Resolve to absolute path
     const absolutePath = path.isAbsolute(filePath)
       ? filePath
@@ -173,7 +178,7 @@ export class ProbeScanner {
 
     // 1. Try @probe comment markers first
     const markers = this.scanFile(absolutePath);
-    const marker = markers.find(m => m.name === probeName);
+    const marker = markers.find(m => m.name === normalizedProbeName);
     if (marker) {
       return {
         filePath: absolutePath,
@@ -184,9 +189,23 @@ export class ProbeScanner {
 
     // 2. Fall back to function / variable lookup via parser
     if (/\.(json|jsonc)$/i.test(absolutePath)) {
-      return this.resolveByJsonPath(absolutePath, probeName);
+      return this.resolveByJsonPath(absolutePath, normalizedProbeName);
     }
-    return this.resolveByAst(absolutePath, probeName);
+    return this.resolveByAst(absolutePath, normalizedProbeName);
+  }
+
+  /**
+   * Normalize probe names for compatibility with "call-like" docs:
+   * - Foo.Bar(arg1, arg2)  -> Foo.Bar
+   * - Foo.Bar(             -> Foo.Bar
+   */
+  private normalizeProbeName(name: string): string {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return '';
+    }
+    const noCallArgs = trimmed.replace(/\(.*$/, '');
+    return noCallArgs.trim();
   }
 
   /**

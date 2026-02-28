@@ -327,6 +327,96 @@ export function activate(context: vscode.ExtensionContext): void {
     void handleAutoOpenPreview(context, vscode.window.activeTextEditor.document);
   }
 
+  // Register command: update Excel cell by filter (AI-friendly high-level API)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.updateExcelCell',
+      async (args: {
+        excelPath: string;
+        sheet: string;
+        filterColumn: string;
+        filterValue: string | number;
+        targetColumn: string;
+        newValue: string | number;
+      }) => {
+        try {
+          const XLSX = await import('xlsx');
+
+          if (!args || !args.excelPath || !args.sheet || !args.filterColumn || !args.targetColumn) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Missing required parameters for updateExcelCell'));
+            return { success: false, error: 'Missing required parameters' };
+          }
+
+          const absPath = path.isAbsolute(args.excelPath)
+            ? args.excelPath
+            : path.resolve(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', args.excelPath);
+
+          if (!fs.existsSync(absPath)) {
+            vscode.window.showErrorMessage(vscode.l10n.t('File not found: {0}', absPath));
+            return { success: false, error: `File not found: ${absPath}` };
+          }
+
+          const buffer = fs.readFileSync(absPath);
+          const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+
+          const sheetName = workbook.SheetNames.includes(args.sheet)
+            ? args.sheet
+            : workbook.SheetNames.find(n => n.toLowerCase() === args.sheet.trim().toLowerCase()) || null;
+          if (!sheetName) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Worksheet not found: {0}', args.sheet));
+            return { success: false, error: `Worksheet not found: ${args.sheet}` };
+          }
+
+          const sheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null, raw: true });
+          const matchIdx = rows.findIndex(row => {
+            const cellVal = row[args.filterColumn];
+            if (cellVal === args.filterValue) { return true; }
+            if (typeof args.filterValue === 'number' && Number(cellVal) === args.filterValue) { return true; }
+            if (String(cellVal).trim() === String(args.filterValue).trim()) { return true; }
+            return false;
+          });
+
+          if (matchIdx < 0) {
+            vscode.window.showErrorMessage(
+              vscode.l10n.t('No row found where {0} = {1}', args.filterColumn, String(args.filterValue))
+            );
+            return { success: false, error: `No row found where ${args.filterColumn} = ${args.filterValue}` };
+          }
+
+          const headers = Object.keys(rows[0] || {});
+          const colIdx = headers.indexOf(args.targetColumn);
+          if (colIdx < 0) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Column not found: {0}', args.targetColumn));
+            return { success: false, error: `Column not found: ${args.targetColumn}` };
+          }
+
+          const cellRef = XLSX.utils.encode_cell({ r: matchIdx + 1, c: colIdx });
+          const val = args.newValue;
+          if (typeof val === 'number') {
+            (sheet as any)[cellRef] = { t: 'n', v: val };
+          } else {
+            (sheet as any)[cellRef] = { t: 's', v: String(val) };
+          }
+
+          const out = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+          fs.writeFileSync(absPath, out);
+
+          const msg = vscode.l10n.t(
+            'Updated Excel: {0}[{1}={2}].{3} → {4}',
+            sheetName, args.filterColumn, String(args.filterValue), args.targetColumn, String(args.newValue)
+          );
+          vscode.window.showInformationMessage(msg);
+          return { success: true, message: msg, rowIndex: matchIdx };
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(vscode.l10n.t('updateExcelCell failed: {0}', errMsg));
+          return { success: false, error: errMsg };
+        }
+      }
+    )
+  );
+
   // Show activation message
   vscode.window.showInformationMessage(vscode.l10n.t('Intelligent Markdown for Lua activated'));
 }

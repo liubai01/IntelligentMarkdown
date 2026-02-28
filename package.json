@@ -58,6 +58,7 @@
     "onCommand:intelligentMarkdown.openConfigManager",
     "onCommand:intelligentMarkdown.quickAccess",
     "onCommand:intelligentMarkdown.installWorkspaceSkills",
+    "onCommand:intelligentMarkdown.updateExcelCell",
     "onView:intelligentMarkdown.configManager"
   ],
   "l10n": "./l10n",
@@ -113,6 +114,11 @@
         "title": "Install Workspace Skills (Cursor + CodeBuddy)",
         "category": "config.md",
         "icon": "$(repo-clone)"
+      },
+      {
+        "command": "intelligentMarkdown.updateExcelCell",
+        "title": "Update Excel Cell by Filter",
+        "category": "config.md"
       }
     ],
     "menus": {
