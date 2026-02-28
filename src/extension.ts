@@ -12,7 +12,7 @@ import {
   LuaConfigDecorationProvider,
   LuaDocLinkProvider
 } from './providers';
-import { showVariableValueCommand } from './commands';
+import { showVariableValueCommand, installWorkspaceSkillsCommand } from './commands';
 import { SmartMarkdownEditorProvider } from './editor/smartMarkdownEditor';
 import { ConfigManagerTreeProvider } from './providers/configManagerTreeProvider';
 
@@ -128,7 +128,8 @@ export function activate(context: vscode.ExtensionContext): void {
             { label: '$(list-tree) Open Config Window Manager', command: 'intelligentMarkdown.openConfigManager' },
             { label: '$(open-preview) Open Config Preview', command: 'intelligentMarkdown.openPreview' },
             { label: '$(eye) Toggle Config Focus Mode', command: 'intelligentMarkdown.configManager.toggleFocus' },
-            { label: '$(refresh) Refresh Config Window Manager', command: 'intelligentMarkdown.configManager.refresh' }
+            { label: '$(refresh) Refresh Config Window Manager', command: 'intelligentMarkdown.configManager.refresh' },
+            { label: '$(repo-clone) Install Workspace Skills', command: 'intelligentMarkdown.installWorkspaceSkills' }
           ],
           {
             title: vscode.l10n.t('config.md Quick Access'),
@@ -142,6 +143,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
         await vscode.commands.executeCommand(pick.command);
       }
+    )
+  );
+
+  // Register command: install Cursor/CodeBuddy skills to current workspace
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'intelligentMarkdown.installWorkspaceSkills',
+      installWorkspaceSkillsCommand
     )
   );
 

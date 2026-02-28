@@ -2,7 +2,7 @@
   "name": "config-md",
   "displayName": "config.md",
   "description": "Markdown-native, plain-text config and spec workflows — visual editing + wizard prompt generation for local CI-style iteration.",
-  "version": "0.6.16",
+  "version": "0.6.17",
   "publisher": "liubai01",
   "icon": "images/icon.png",
   "repository": {
@@ -57,6 +57,7 @@
     "onCommand:intelligentMarkdown.gotoDoc",
     "onCommand:intelligentMarkdown.openConfigManager",
     "onCommand:intelligentMarkdown.quickAccess",
+    "onCommand:intelligentMarkdown.installWorkspaceSkills",
     "onView:intelligentMarkdown.configManager"
   ],
   "l10n": "./l10n",
@@ -112,6 +113,12 @@
         "title": "Quick Access: config.md",
         "category": "config.md",
         "icon": "$(symbol-misc)"
+      },
+      {
+        "command": "intelligentMarkdown.installWorkspaceSkills",
+        "title": "Install Workspace Skills (Cursor + CodeBuddy)",
+        "category": "config.md",
+        "icon": "$(repo-clone)"
       }
     ],
     "menus": {
@@ -135,6 +142,9 @@
         },
         {
           "command": "intelligentMarkdown.quickAccess"
+        },
+        {
+          "command": "intelligentMarkdown.installWorkspaceSkills"
         }
       ],
       "view/title": [
@@ -175,6 +185,10 @@
         {
           "command": "intelligentMarkdown.quickAccess",
           "group": "0_quick"
+        },
+        {
+          "command": "intelligentMarkdown.installWorkspaceSkills",
+          "group": "0_quick@1"
         }
       ]
     },
